@@ -11,87 +11,156 @@ st.set_page_config(page_title="Cálculo de Energia Incidente", page_icon="⚡", 
 st.title("⚡ Sistema de Análise de Arc Flash (NBR 17227)")
 st.markdown("---")
 
-# --- INICIALIZAÇÃO DE ESTADO (MEMÓRIA) ---
+# --- INICIALIZAÇÃO DE ESTADO ---
 if 'corrente_stored' not in st.session_state:
     st.session_state['corrente_stored'] = 17.0
 if 'resultado_icc_detalhe' not in st.session_state:
     st.session_state['resultado_icc_detalhe'] = None
-# Variável para guardar o último cálculo realizado
 if 'ultimo_calculo' not in st.session_state:
     st.session_state['ultimo_calculo'] = None
 
-# --- FUNÇÕES DE GERAÇÃO DE ARQUIVOS ---
+# --- FUNÇÕES DE GERAÇÃO DE RELATÓRIOS (PDF/WORD) ---
 
 def gerar_pdf(dados):
     pdf = FPDF()
     pdf.add_page()
+    
+    # Cabeçalho
     pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, 'Memorial de Calculo - Arc Flash', 0, 1, 'C')
+    pdf.cell(0, 10, 'Memorial de Calculo Detalhado - Energia Incidente', 0, 1, 'C')
     pdf.set_font("Arial", 'I', 10)
     pdf.cell(0, 10, 'Conforme NBR 17227 / IEEE 1584', 0, 1, 'C')
-    pdf.ln(10)
-    
-    pdf.set_font("Arial", size=11)
-    # Dados
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "1. Parametros de Entrada:", 0, 1)
-    pdf.set_font("Arial", size=11)
-    pdf.cell(0, 7, f"   - Tensao: {dados['v']:.3f} kV", 0, 1)
-    pdf.cell(0, 7, f"   - Corrente (Ibf): {dados['i']:.3f} kA", 0, 1)
-    pdf.cell(0, 7, f"   - Tempo: {dados['t']:.4f} s", 0, 1)
-    pdf.cell(0, 7, f"   - Gap: {dados['g']:.1f} mm", 0, 1)
-    pdf.cell(0, 7, f"   - Distancia: {dados['d']:.1f} mm", 0, 1)
     pdf.ln(5)
     
-    # Resultado
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "2. Resultado Final:", 0, 1)
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, f"   Energia: {dados['e']:.2f} cal/cm2", 0, 1)
-    pdf.set_font("Arial", size=11)
-    pdf.cell(0, 10, f"   Classificacao: {dados['cat']}", 0, 1)
+    # 1. Dados de Entrada
+    pdf.set_fill_color(230, 230, 230)
+    pdf.set_font("Arial", 'B', 11)
+    pdf.cell(0, 8, "1. Parametros de Entrada", 1, 1, 'L', 1)
+    pdf.set_font("Arial", size=10)
+    pdf.ln(2)
     
+    pdf.cell(95, 7, f"Tensao Nominal (Voc): {dados['v']:.3f} kV", 0, 0)
+    pdf.cell(95, 7, f"Corrente de Curto (Ibf): {dados['i']:.3f} kA", 0, 1)
+    pdf.cell(95, 7, f"Tempo de Eliminacao (t): {dados['t']:.4f} s", 0, 0)
+    pdf.cell(95, 7, f"Configuracao: VCB (Vertical Box)", 0, 1)
+    
+    # Geometria
+    gap_tipo = "(Padrao)" if dados['is_gap_std'] else "(Inserido)"
+    dist_tipo = "(Padrao)" if dados['is_dist_std'] else "(Inserido)"
+    
+    pdf.cell(95, 7, f"Gap dos Eletrodos (G): {dados['g']:.1f} mm {gap_tipo}", 0, 0)
+    pdf.cell(95, 7, f"Distancia de Trabalho (D): {dados['d']:.1f} mm {dist_tipo}", 0, 1)
+    pdf.ln(5)
+
+    # 2. Roteiro de Cálculo
+    pdf.set_font("Arial", 'B', 11)
+    pdf.cell(0, 8, "2. Roteiro de Calculo (Passo a Passo)", 1, 1, 'L', 1)
+    pdf.set_font("Arial", size=10)
+    pdf.ln(2)
+    
+    pdf.multi_cell(0, 6, "O calculo baseia-se no modelo empirico da IEEE 1584, determinando primeiro a energia normalizada e aplicando os fatores de correcao.")
+    pdf.ln(2)
+    
+    pdf.set_font("Courier", size=10) # Fonte monoespaçada para contas
+    # Passo 2.1
+    pdf.cell(0, 6, f"A) Logaritmos de Base 10:", 0, 1)
+    pdf.cell(0, 6, f"   Log(Ibf) = {math.log10(dados['i']):.4f}", 0, 1)
+    pdf.cell(0, 6, f"   Log(G)   = {math.log10(dados['g']):.4f}", 0, 1)
+    pdf.ln(2)
+    
+    # Passo 2.2
+    pdf.cell(0, 6, f"B) Calculo da Energia Base (Log En):", 0, 1)
+    pdf.cell(0, 6, f"   Modelo Utilizado: {'Media Tensao (>1kV)' if dados['v']>=1 else 'Baixa Tensao (<1kV)'}", 0, 1)
+    pdf.cell(0, 6, f"   Constantes: k1={dados['k_base']}, k2={dados['k_i']}, k3={dados['k_g']}", 0, 1)
+    pdf.cell(0, 6, f"   Eq: Log(En) = k1 + k2*Log(Ibf) + k3*Gap", 0, 1)
+    pdf.cell(0, 6, f"   Log(En) = {dados['lg_en']:.4f}", 0, 1)
+    pdf.cell(0, 6, f"   En (Normalizada) = 10^{dados['lg_en']:.4f} = {dados['en_base']:.4f} cal/cm2", 0, 1)
+    pdf.ln(2)
+    
+    # Passo 2.3
+    pdf.cell(0, 6, f"C) Fatores de Correcao:", 0, 1)
+    pdf.cell(0, 6, f"   Fator Tempo (t / 0.2s): {dados['t']}/0.2 = {dados['fator_t']:.2f}", 0, 1)
+    pdf.cell(0, 6, f"   Fator Distancia (610 / D)^x: (610/{dados['d']:.1f})^{dados['x_dist']} = {dados['fator_d']:.3f}", 0, 1)
+    pdf.cell(0, 6, f"   Fator de Calibracao (V): {dados['fator_v']}", 0, 1)
+    pdf.ln(2)
+    
+    # Passo 2.4
+    pdf.cell(0, 6, f"D) Energia Final (E):", 0, 1)
+    pdf.cell(0, 6, f"   E = En * Fator_Tempo * Fator_Distancia * Fator_V", 0, 1)
+    pdf.cell(0, 6, f"   E = {dados['en_base']:.3f} * {dados['fator_t']:.2f} * {dados['fator_d']:.3f} * {dados['fator_v']}", 0, 1)
+    pdf.ln(5)
+
+    # 3. Resultado Final
+    pdf.set_font("Arial", 'B', 11)
+    pdf.cell(0, 8, "3. Resultado e Classificacao", 1, 1, 'L', 1)
+    pdf.ln(4)
+    
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, f"Energia Incidente: {dados['e']:.2f} cal/cm2", 0, 1)
+    
+    pdf.set_font("Arial", size=11)
+    pdf.cell(0, 8, f"Classificacao de Risco: {dados['cat']}", 0, 1)
+    
+    if dados['e'] > 40:
+        pdf.set_text_color(200, 0, 0)
+        pdf.cell(0, 8, "ATENCAO: Valor excede limite seguro para EPI comum.", 0, 1)
+        pdf.set_text_color(0, 0, 0)
+        
     return pdf.output(dest='S').encode('latin-1')
 
 def gerar_word(dados):
     doc = Document()
-    doc.add_heading('Memorial de Cálculo - Arc Flash', 0)
-    doc.add_paragraph('Baseado na norma NBR 17227 / IEEE 1584')
+    doc.add_heading('Memorial de Cálculo - Energia Incidente', 0)
     
+    # 1. Parâmetros
     doc.add_heading('1. Parâmetros de Entrada', level=1)
     p = doc.add_paragraph()
-    p.add_run(f"Tensão Nominal: ").bold = True
-    p.add_run(f"{dados['v']:.3f} kV\n")
-    p.add_run(f"Corrente de Curto (Ibf): ").bold = True
-    p.add_run(f"{dados['i']:.3f} kA\n")
-    p.add_run(f"Tempo de Arco: ").bold = True
-    p.add_run(f"{dados['t']:.4f} s\n")
-    p.add_run(f"Gap dos Eletrodos: ").bold = True
-    p.add_run(f"{dados['g']:.1f} mm\n")
-    p.add_run(f"Distância de Trabalho: ").bold = True
-    p.add_run(f"{dados['d']:.1f} mm")
+    p.add_run(f"Tensão Nominal: {dados['v']:.3f} kV\n").bold = True
+    p.add_run(f"Corrente de Curto (Ibf): {dados['i']:.3f} kA\n")
+    p.add_run(f"Tempo de Arco: {dados['t']:.4f} s\n")
+    
+    gap_txt = " (Padrão)" if dados['is_gap_std'] else " (Manual)"
+    dist_txt = " (Padrão)" if dados['is_dist_std'] else " (Manual)"
+    
+    p.add_run(f"Gap dos Eletrodos: {dados['g']:.1f} mm{gap_txt}\n")
+    p.add_run(f"Distância de Trabalho: {dados['d']:.1f} mm{dist_txt}\n")
+    p.add_run("Configuração: VCB (Vertical Conductors in Metal Box)")
 
-    doc.add_heading('2. Detalhes do Cálculo', level=1)
+    # 2. Roteiro
+    doc.add_heading('2. Roteiro de Cálculo Detalhado', level=1)
+    doc.add_paragraph("Metodologia baseada na norma IEEE 1584 / NBR 17227.")
+    
     p2 = doc.add_paragraph()
-    p2.add_run(f"Log10(Corrente): {math.log10(dados['i']):.4f}\n")
-    fator_dist = (610/dados['d'])**2
-    p2.add_run(f"Fator de Distância (610/D)²: {fator_dist:.3f}")
+    p2.add_run("A) Variáveis Logarítmicas:\n").bold = True
+    p2.add_run(f"Log10(Ibf) = {math.log10(dados['i']):.4f}\n")
+    p2.add_run(f"Log10(Gap) = {math.log10(dados['g']):.4f}\n")
+    
+    p2.add_run("\nB) Energia Base Normalizada (En):\n").bold = True
+    p2.add_run(f"Constantes utilizadas: k1={dados['k_base']}, k2={dados['k_i']}\n")
+    p2.add_run(f"Log(En) calculado = {dados['lg_en']:.4f}\n")
+    p2.add_run(f"En (Energia Base) = {dados['en_base']:.4f} cal/cm²\n")
+    
+    p2.add_run("\nC) Fatores de Correção:\n").bold = True
+    p2.add_run(f"Fator de Tempo (t/0.2): {dados['fator_t']:.3f}\n")
+    p2.add_run(f"Fator de Distância (610/D)^{dados['x_dist']}: {dados['fator_d']:.3f}\n")
+    p2.add_run(f"Fator de Tensão/Calibração: {dados['fator_v']}\n")
 
+    # 3. Resultado
     doc.add_heading('3. Resultado Final', level=1)
-    res_par = doc.add_paragraph()
-    run = res_par.add_run(f"Energia Incidente: {dados['e']:.2f} cal/cm²")
+    pres = doc.add_paragraph()
+    run = pres.add_run(f"{dados['e']:.2f} cal/cm²")
     run.bold = True
-    run.font.size = Pt(14)
+    run.font.size = Pt(16)
     
-    doc.add_paragraph(f"Classificação de Risco: {dados['cat']}")
-    
-    # Salvar em memória
+    doc.add_paragraph(f"Classificação: {dados['cat']}")
+    doc.add_paragraph("Nota: A vestimenta deve possuir ATPV superior à energia calculada.")
+
     buffer = io.BytesIO()
     doc.save(buffer)
     buffer.seek(0)
     return buffer
 
-# --- CALLBACK PARA ATUALIZAR ICC ---
+# --- CALLBACK DE ATUALIZAÇÃO ---
 def atualizar_icc():
     try:
         t_kva = st.session_state['k_kva']
@@ -113,10 +182,10 @@ def atualizar_icc():
     except Exception:
         pass
 
-# --- ABAS ---
+# --- INTERFACE PRINCIPAL ---
 tab1, tab2 = st.tabs(["🔥 Cálculo de Energia Incidente", "🧮 Estimativa de Icc (Curto-Circuito)"])
 
-# ABA 1: ARC FLASH
+# ABA 1
 with tab1:
     st.header("Cálculo da Energia Incidente")
     
@@ -126,18 +195,31 @@ with tab1:
     with c3: tempo = st.number_input("3. Tempo (s)", value=0.500, format="%.4f")
 
     st.subheader("Geometria (Opcional)")
+    st.caption("Deixe 0 para usar os padrões normativos.")
     c4, c5 = st.columns(2)
-    with c4: gap = st.number_input("4. Gap (mm)", value=152.0, step=1.0)
-    with c5: distancia = st.number_input("5. Distância (mm)", value=914.0, step=10.0)
+    with c4: gap = st.number_input("4. Gap (mm)", value=0.0, step=1.0)
+    with c5: distancia = st.number_input("5. Distância (mm)", value=0.0, step=10.0)
 
-    # LÓGICA DE CÁLCULO
-    def calcular_final():
-        g_c = gap if gap > 0 else (152.0 if tensao >= 1.0 else 25.0)
-        d_c = distancia if distancia > 0 else (914.0 if tensao >= 1.0 else 457.2)
-        
+    # LÓGICA DO CÁLCULO
+    def calcular_completo():
+        # Lógica de Padrões (Detecta se foi inserido ou padrão)
+        is_gap_std = False
+        if gap <= 0:
+            g_c = 152.0 if tensao >= 1.0 else 25.0
+            is_gap_std = True
+        else:
+            g_c = gap
+            
+        is_dist_std = False
+        if distancia <= 0:
+            d_c = 914.0 if tensao >= 1.0 else 457.2
+            is_dist_std = True
+        else:
+            d_c = distancia
+
         lg_i = math.log10(corrente) if corrente > 0 else 0
         
-        # Modelo Simplificado IEEE 1584
+        # Coeficientes IEEE 1584 Simplificado
         if tensao < 1.0: # BT
             k_base, k_i, k_g = -0.555, 1.081, 0.0011
             x_dist = 2.0
@@ -147,12 +229,17 @@ with tab1:
             x_dist = 2.0
             fator_v = 1.15
 
+        # Passo a Passo Matemático
         lg_en = k_base + (k_i * lg_i) + (k_g * g_c)
-        en = 10 ** lg_en
-        e_final = 1.0 * en * (tempo / 0.2) * ((610 / d_c) ** x_dist) * fator_v
+        en_base = 10 ** lg_en
         
-        # Define Categoria
-        if e_final < 1.2: cat, cor = "Risco Mínimo", "green"
+        fator_t = tempo / 0.2
+        fator_d = (610 / d_c) ** x_dist
+        
+        e_final = 1.0 * en_base * fator_t * fator_d * fator_v
+        
+        # Classificação
+        if e_final < 1.2: cat, cor = "Risco Minimo", "green"
         elif e_final < 4.0: cat, cor = "Categoria 1 ou 2", "orange"
         elif e_final < 8.0: cat, cor = "Categoria 2", "darkorange"
         elif e_final < 40.0: cat, cor = "Categoria 3 ou 4", "red"
@@ -160,18 +247,22 @@ with tab1:
 
         return {
             'v': tensao, 'i': corrente, 't': tempo, 'g': g_c, 'd': d_c,
+            'is_gap_std': is_gap_std, 'is_dist_std': is_dist_std,
+            'k_base': k_base, 'k_i': k_i, 'k_g': k_g,
+            'lg_en': lg_en, 'en_base': en_base,
+            'fator_t': fator_t, 'fator_d': fator_d, 'fator_v': fator_v, 'x_dist': x_dist,
             'e': e_final, 'cat': cat, 'cor': cor
         }
 
-    # BOTÃO CALCULAR (Salva no Estado)
+    # BOTÃO CALCULAR
     if st.button("Calcular Energia", type="primary", use_container_width=True):
         if tensao > 0 and corrente > 0 and tempo > 0:
-            resultado = calcular_final()
-            st.session_state['ultimo_calculo'] = resultado # Salva na memória
+            resultado = calcular_completo()
+            st.session_state['ultimo_calculo'] = resultado
         else:
-            st.warning("Preencha todos os campos.")
+            st.warning("Preencha os campos obrigatórios.")
 
-    # EXIBIÇÃO PERSISTENTE DO RESULTADO
+    # EXIBIÇÃO RESULTADOS + BOTÕES
     if st.session_state['ultimo_calculo']:
         res = st.session_state['ultimo_calculo']
         
@@ -182,21 +273,20 @@ with tab1:
         
         st.caption(f"Parâmetros: Gap {res['g']}mm | Distância {res['d']}mm")
         
-        # ÁREA DE DOWNLOAD (Agora não some!)
-        st.subheader("📂 Exportar Relatório")
-        col_dl1, col_dl2 = st.columns(2)
+        # BOTÕES DE DOCUMENTAÇÃO
+        st.subheader("📄 Documentação Técnica")
+        st.info("Baixe o memorial detalhado para comprovação dos cálculos.")
         
-        # Botão PDF
-        with col_dl1:
+        c_dl1, c_dl2 = st.columns(2)
+        with c_dl1:
             pdf_data = gerar_pdf(res)
-            st.download_button("📄 Baixar PDF", data=pdf_data, file_name="memorial.pdf", mime="application/pdf", use_container_width=True)
-            
-        # Botão Word
-        with col_dl2:
+            st.download_button("📥 Baixar Memorial em PDF", data=pdf_data, file_name="memorial_arc_flash.pdf", mime="application/pdf", use_container_width=True)
+        
+        with c_dl2:
             docx_data = gerar_word(res)
-            st.download_button("📝 Baixar Word (.docx)", data=docx_data, file_name="memorial.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+            st.download_button("📝 Baixar Memorial em Word", data=docx_data, file_name="memorial_arc_flash.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
 
-# ABA 2: CALCULADORA ICC
+# ABA 2
 with tab2:
     st.header("Estimativa de Icc")
     c1, c2 = st.columns(2)
