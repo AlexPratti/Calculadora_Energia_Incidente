@@ -8,9 +8,39 @@ st.title("⚡ Sistema de Análise de Arc Flash (NBR 17227)")
 st.markdown("---")
 
 # --- INICIALIZAÇÃO DE ESTADO (MEMÓRIA) ---
-# Isso garante que o valor da corrente seja compartilhado entre as abas
 if 'corrente_stored' not in st.session_state:
-    st.session_state['corrente_stored'] = 17.0 # Valor inicial padrão
+    st.session_state['corrente_stored'] = 17.0
+
+# --- FUNÇÃO CALLBACK (O SEGREDO PARA NÃO DAR ERRO) ---
+# Esta função roda ANTES de desenhar a tela, evitando o erro de "widget já renderizado"
+def atualizar_icc():
+    # Pega os valores dos inputs da Aba 2 (através das keys)
+    try:
+        t_kva = st.session_state['k_kva']
+        t_v = st.session_state['k_v']
+        t_z = st.session_state['k_z']
+        usar_motor = st.session_state['k_motor']
+        
+        if t_v > 0 and t_z > 0:
+            # 1. Corrente Nominal
+            i_nom = (t_kva * 1000) / (math.sqrt(3) * t_v)
+            
+            # 2. Curto no Trafo
+            i_cc_trafo = i_nom / (t_z / 100)
+            
+            # 3. Contribuição de Motores
+            i_motor = 0
+            if usar_motor:
+                i_motor = 4 * i_nom 
+            
+            i_total_ka = (i_cc_trafo + i_motor) / 1000
+            
+            # ATUALIZA O VALOR DA ABA 1
+            st.session_state['corrente_stored'] = i_total_ka
+            st.toast(f"✅ Icc Atualizada: {i_total_ka:.3f} kA", icon="🔄")
+            
+    except Exception as e:
+        st.error(f"Erro no cálculo: {e}")
 
 # Criando abas
 tab1, tab2 = st.tabs(["🔥 Cálculo de Energia Incidente", "🧮 Estimativa de Icc (Curto-Circuito)"])
@@ -20,9 +50,8 @@ tab1, tab2 = st.tabs(["🔥 Cálculo de Energia Incidente", "🧮 Estimativa de 
 # =======================================================
 with tab1:
     st.header("Cálculo da Energia Incidente")
-    st.info("Preencha os dados abaixo. Se calcular o curto na outra aba, o valor aparecerá aqui automaticamente.")
+    st.info("O campo de Corrente abaixo aceita digitação manual OU atualização automática pela Aba 2.")
 
-    # --- BARRA LATERAL DENTRO DA ABA ---
     col_in1, col_in2 = st.columns(2)
     
     with col_in1:
@@ -30,16 +59,20 @@ with tab1:
         tempo = st.number_input("3. Tempo de Arco (s)", value=0.200, format="%.4f", help="Tempo de atuação da proteção.")
         
     with col_in2:
-        # AQUI ESTÁ O TRUQUE: usamos a 'key' para ligar à memória
-        corrente = st.number_input("2. Corrente de Curto (kA)", key="corrente_stored", format="%.3f", help="Ibf: Corrente de curto trifásica franca.")
+        # Este campo está ligado à memória 'corrente_stored'
+        corrente = st.number_input(
+            "2. Corrente de Curto (kA)", 
+            key="corrente_stored", 
+            format="%.3f", 
+            help="Ibf: Pode digitar ou calcular na outra aba."
+        )
         
     with st.expander("Configurações Avançadas de Geometria (Opcional)"):
-        st.write("Se deixar zerado, o sistema usa os padrões da norma.")
         gap = st.number_input("Gap dos Eletrodos (mm)", value=0.0, step=1.0)
         distancia = st.number_input("Distância de Trabalho (mm)", value=0.0, step=10.0)
 
-    # Função de Cálculo
-    def calcular_energia():
+    # Função de Cálculo da Energia
+    def calcular_energia_final():
         # Padrões
         gap_local = gap
         dist_local = distancia
@@ -63,17 +96,15 @@ with tab1:
         # Cálculo
         log_Ibf = math.log10(corrente) if corrente > 0 else 0
         
-        # Correção rápida para log de Gap
-        gap_log_val = gap_local if gap_local > 0 else 1
-        log_G = math.log10(gap_log_val)
-        
-        dist_log_val = dist_local if dist_local > 0 else 1
-        log_D = math.log10(dist_log_val)
+        # Correção Logs
+        g_val = gap_local if gap_local > 0 else 1
+        d_val = dist_local if dist_local > 0 else 1
+        log_G = math.log10(g_val)
+        log_D = math.log10(d_val)
 
         I_arc = fator_Iarc * corrente
         log_Iarc = math.log10(I_arc) if I_arc > 0 else 0
 
-        # Importante: log_Gap estava errado na versão anterior, corrigido para log_G
         expoente = k1 + (k2 * log_Ibf) + (k3 * log_G) + (c_dist * log_D) + (0.99 * log_Iarc)
         
         E_joules = 0.25104 * (tempo * 1000) * (10 ** expoente)
@@ -84,7 +115,7 @@ with tab1:
 
     if st.button("Calcular Energia", type="primary"):
         if tensao > 0 and corrente > 0 and tempo > 0:
-            res, g_used, d_used = calcular_energia()
+            res, g_used, d_used = calcular_energia_final()
             
             # Categorias
             if res < 1.2: cat, cor = "Risco Mínimo", "green"
@@ -102,39 +133,19 @@ with tab1:
 # =======================================================
 with tab2:
     st.header("Estimativa de Icc pelo Transformador")
-    st.markdown("Calcule aqui e o sistema enviará o resultado automaticamente para a Aba de Energia.")
+    st.markdown("Os valores abaixo alimentam a calculadora automaticamente ao clicar no botão.")
     
     col_trafo1, col_trafo2 = st.columns(2)
     
+    # Adicionamos 'key' para cada input para podermos ler na função 'atualizar_icc'
     with col_trafo1:
-        trafo_kva = st.number_input("Potência do Transformador (kVA)", value=1000.0, step=100.0)
-        trafo_v = st.number_input("Tensão Secundária (Volts)", value=380.0, step=10.0)
+        st.number_input("Potência do Transformador (kVA)", value=1000.0, step=100.0, key="k_kva")
+        st.number_input("Tensão Secundária (Volts)", value=380.0, step=10.0, key="k_v")
         
     with col_trafo2:
-        trafo_z = st.number_input("Impedância (Z%)", value=5.0, step=0.1)
-        motor_contrib = st.checkbox("Incluir contribuição de motores?", value=True)
+        st.number_input("Impedância (Z%)", value=5.0, step=0.1, key="k_z")
+        st.checkbox("Incluir contribuição de motores?", value=True, key="k_motor")
 
-    # Botão de Calcular e Atualizar
-    if st.button("Calcular e Atualizar Icc (kA)", type="primary"):
-        if trafo_v > 0 and trafo_z > 0:
-            # Cálculos
-            i_nom = (trafo_kva * 1000) / (math.sqrt(3) * trafo_v)
-            i_cc_trafo = i_nom / (trafo_z / 100)
-            
-            i_motor = 0
-            if motor_contrib:
-                i_motor = 4 * i_nom 
-            
-            i_total_ka = (i_cc_trafo + i_motor) / 1000
-            
-            # --- ATUALIZAÇÃO AUTOMÁTICA ---
-            st.session_state['corrente_stored'] = i_total_ka # Atualiza a memória
-            
-            st.success(f"Corrente Calculada: {i_total_ka:.3f} kA")
-            st.info("✅ Valor enviado automaticamente para a aba 'Cálculo de Energia Incidente'!")
-            
-            # Detalhes visuais
-            st.write(f"Resumo: Trafo {(i_cc_trafo/1000):.2f} kA + Motores {(i_motor/1000):.2f} kA")
-            
-            # Força o recarregamento da página para mostrar o valor novo na outra aba
-            st.rerun()
+    # BOTÃO COM CALLBACK (ON_CLICK)
+    # Isso garante que o cálculo ocorra antes da tela ser renderizada
+    st.button("Calcular e Atualizar Icc (kA)", type="primary", on_click=atualizar_icc)
