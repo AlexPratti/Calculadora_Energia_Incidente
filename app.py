@@ -1,5 +1,4 @@
-
-     import streamlit as st
+import streamlit as st
 import math
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
@@ -10,7 +9,7 @@ st.markdown("---")
 
 # --- INICIALIZAÇÃO DE ESTADO (MEMÓRIA) ---
 if 'corrente_stored' not in st.session_state:
-    st.session_state['corrente_stored'] = 5.0 # Valor inicial exemplo
+    st.session_state['corrente_stored'] = 5.0 
 
 if 'resultado_icc_detalhe' not in st.session_state:
     st.session_state['resultado_icc_detalhe'] = None
@@ -77,9 +76,8 @@ with tab1:
     with col_geo2:
         distancia = st.number_input("5. Distância de Trabalho (mm)", value=914.0, step=10.0)
 
-    # --- LÓGICA CORRIGIDA (Baseada na IEEE 1584-2002 Estável) ---
+    # --- LÓGICA CORRIGIDA (IEEE 1584) ---
     def calcular_energia_final():
-        # 1. Definição de Padrões Automáticos
         g_calc = gap
         d_calc = distancia
         
@@ -89,59 +87,35 @@ with tab1:
         if d_calc <= 0:
             d_calc = 914.0 if tensao >= 1.0 else 457.2
 
-        # 2. Modelo Matemático Estável (IEEE 1584-2002 Reference)
-        # Este modelo é mais linear e previsível para calculadoras gerais
-        
-        # Log base 10 da corrente
         lg_i = math.log10(corrente) if corrente > 0 else 0
         
         if tensao < 1.0:
-            # --- BAIXA TENSÃO (< 1 kV) ---
-            # Modelo Box (Painel Fechado)
-            # K1=-0.555, K2=0 (termo de aterramento simplificado)
-            # Fatores empíricos para 600V
+            # BT (< 1 kV)
             k_base = -0.555
             k_i = 1.081
-            k_g = 0.0011 # Gap tem efeito positivo pequeno
+            k_g = 0.0011
             
-            # Cálculo da Energia Normalizada (En)
             lg_en = k_base + (k_i * lg_i) + (k_g * g_calc)
             en = 10 ** lg_en
-            
-            # Expoente de Distância (x) para BT
             x_dist = 2.0
             
-            # Fator de Tensão para 380V (Baixa tensão tem arco mais fraco)
-            # Reduz energia se tensão for baixa (ex: 380V vs 600V)
             fator_v = 1.0
             if tensao < 0.6: 
                 fator_v = 0.85 
-
         else:
-            # --- MÉDIA TENSÃO (>= 1 kV) ---
-            # Modelo Box 15kV Class
-            # Ajuste para alinhar com seus exemplos (13.8kV)
+            # MT (>= 1 kV)
             k_base = -0.555
             k_i = 1.081
-            k_g = 0.0011 # O erro anterior estava aqui (era negativo)
+            k_g = 0.0011
             
             lg_en = k_base + (k_i * lg_i) + (k_g * g_calc)
             en = 10 ** lg_en
-            
-            # Expoente de Distância (x) para MT
             x_dist = 2.0
-            fator_v = 1.0 # 13.8kV está na faixa padrão
+            fator_v = 1.0
 
-        # 3. Conversão Final para Energia (E)
-        # E = 4.184 * Cf * En * (t/0.2) * (610/D)^x
-        # O modelo base é calibrado para 0.2s e 610mm
-        
-        cf = 1.0 # Fator de cálculo (cal/cm2)
-        
-        # Fórmula Geral de Transposição
+        cf = 1.0
         e_final = cf * en * (tempo / 0.2) * ((610 / d_calc) ** x_dist)
         
-        # Correção final para calibrar com IEEE 1584-2018 (que é mais conservadora em MT)
         if tensao >= 1.0:
             e_final = e_final * 1.15
         else:
@@ -154,7 +128,6 @@ with tab1:
         if tensao > 0 and corrente > 0 and tempo > 0:
             res, g_used, d_used = calcular_energia_final()
             
-            # Categorias (Tabela NFPA 70E / NBR)
             if res < 1.2: 
                 cat, cor = "Risco Mínimo", "green"
             elif res < 4.0: 
