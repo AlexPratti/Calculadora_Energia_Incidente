@@ -1,0 +1,1 @@
+# Calculadora_Energia_Incidente
