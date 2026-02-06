@@ -19,7 +19,18 @@ if 'resultado_icc_detalhe' not in st.session_state:
 if 'ultimo_calculo' not in st.session_state:
     st.session_state['ultimo_calculo'] = None
 
-# --- FUNÇÕES DE GERAÇÃO DE RELATÓRIOS (PDF/WORD) ---
+# --- FUNÇÃO AUXILIAR PARA CORRIGIR ACENTOS (PDF) ---
+def ft(texto):
+    """
+    Converte string UTF-8 (Python) para Latin-1 (PDF padrão).
+    Resolve problemas de cedilha (ç) e acentos (ã, é, í).
+    """
+    try:
+        return str(texto).encode('latin-1', 'replace').decode('latin-1')
+    except Exception:
+        return str(texto)
+
+# --- FUNÇÕES DE GERAÇÃO DE RELATÓRIOS ---
 
 def gerar_pdf(dados):
     pdf = FPDF()
@@ -27,7 +38,8 @@ def gerar_pdf(dados):
     
     # Cabeçalho
     pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, 'Memorial de Calculo Detalhado - Energia Incidente', 0, 1, 'C')
+    # Note o uso de ft() em todos os textos com acento
+    pdf.cell(0, 10, ft('Memorial de Cálculo Detalhado - Energia Incidente'), 0, 1, 'C')
     pdf.set_font("Arial", 'I', 10)
     pdf.cell(0, 10, 'Conforme NBR 17227 / IEEE 1584', 0, 1, 'C')
     pdf.ln(5)
@@ -35,42 +47,43 @@ def gerar_pdf(dados):
     # 1. Dados de Entrada
     pdf.set_fill_color(230, 230, 230)
     pdf.set_font("Arial", 'B', 11)
-    pdf.cell(0, 8, "1. Parametros de Entrada", 1, 1, 'L', 1)
+    pdf.cell(0, 8, ft("1. Parâmetros de Entrada"), 1, 1, 'L', 1)
     pdf.set_font("Arial", size=10)
     pdf.ln(2)
     
-    pdf.cell(95, 7, f"Tensao Nominal (Voc): {dados['v']:.3f} kV", 0, 0)
-    pdf.cell(95, 7, f"Corrente de Curto (Ibf): {dados['i']:.3f} kA", 0, 1)
-    pdf.cell(95, 7, f"Tempo de Eliminacao (t): {dados['t']:.4f} s", 0, 0)
-    pdf.cell(95, 7, f"Configuracao: VCB (Vertical Box)", 0, 1)
+    pdf.cell(95, 7, ft(f"Tensão Nominal (Voc): {dados['v']:.3f} kV"), 0, 0)
+    pdf.cell(95, 7, ft(f"Corrente de Curto (Ibf): {dados['i']:.3f} kA"), 0, 1)
+    pdf.cell(95, 7, ft(f"Tempo de Eliminação (t): {dados['t']:.4f} s"), 0, 0)
+    pdf.cell(95, 7, ft(f"Configuração: VCB (Vertical Box)"), 0, 1)
     
     # Geometria
     gap_tipo = "(Padrao)" if dados['is_gap_std'] else "(Inserido)"
     dist_tipo = "(Padrao)" if dados['is_dist_std'] else "(Inserido)"
     
-    pdf.cell(95, 7, f"Gap dos Eletrodos (G): {dados['g']:.1f} mm {gap_tipo}", 0, 0)
-    pdf.cell(95, 7, f"Distancia de Trabalho (D): {dados['d']:.1f} mm {dist_tipo}", 0, 1)
+    pdf.cell(95, 7, ft(f"Gap dos Eletrodos (G): {dados['g']:.1f} mm {gap_tipo}"), 0, 0)
+    pdf.cell(95, 7, ft(f"Distância de Trabalho (D): {dados['d']:.1f} mm {dist_tipo}"), 0, 1)
     pdf.ln(5)
 
     # 2. Roteiro de Cálculo
     pdf.set_font("Arial", 'B', 11)
-    pdf.cell(0, 8, "2. Roteiro de Calculo (Passo a Passo)", 1, 1, 'L', 1)
+    pdf.cell(0, 8, ft("2. Roteiro de Cálculo (Passo a Passo)"), 1, 1, 'L', 1)
     pdf.set_font("Arial", size=10)
     pdf.ln(2)
     
-    pdf.multi_cell(0, 6, "O calculo baseia-se no modelo empirico da IEEE 1584, determinando primeiro a energia normalizada e aplicando os fatores de correcao.")
+    pdf.multi_cell(0, 6, ft("O cálculo baseia-se no modelo empírico da IEEE 1584, determinando primeiro a energia normalizada e aplicando os fatores de correção."))
     pdf.ln(2)
     
-    pdf.set_font("Courier", size=10) # Fonte monoespaçada para contas
+    pdf.set_font("Courier", size=10)
     # Passo 2.1
-    pdf.cell(0, 6, f"A) Logaritmos de Base 10:", 0, 1)
+    pdf.cell(0, 6, f"A) Variáveis Logarítmicas:", 0, 1)
     pdf.cell(0, 6, f"   Log(Ibf) = {math.log10(dados['i']):.4f}", 0, 1)
     pdf.cell(0, 6, f"   Log(G)   = {math.log10(dados['g']):.4f}", 0, 1)
     pdf.ln(2)
     
     # Passo 2.2
-    pdf.cell(0, 6, f"B) Calculo da Energia Base (Log En):", 0, 1)
-    pdf.cell(0, 6, f"   Modelo Utilizado: {'Media Tensao (>1kV)' if dados['v']>=1 else 'Baixa Tensao (<1kV)'}", 0, 1)
+    modelo_txt = "Média Tensão (>1kV)" if dados['v']>=1 else "Baixa Tensão (<1kV)"
+    pdf.cell(0, 6, ft(f"B) Cálculo da Energia Base (Log En):"), 0, 1)
+    pdf.cell(0, 6, ft(f"   Modelo Utilizado: {modelo_txt}"), 0, 1)
     pdf.cell(0, 6, f"   Constantes: k1={dados['k_base']}, k2={dados['k_i']}, k3={dados['k_g']}", 0, 1)
     pdf.cell(0, 6, f"   Eq: Log(En) = k1 + k2*Log(Ibf) + k3*Gap", 0, 1)
     pdf.cell(0, 6, f"   Log(En) = {dados['lg_en']:.4f}", 0, 1)
@@ -78,10 +91,10 @@ def gerar_pdf(dados):
     pdf.ln(2)
     
     # Passo 2.3
-    pdf.cell(0, 6, f"C) Fatores de Correcao:", 0, 1)
-    pdf.cell(0, 6, f"   Fator Tempo (t / 0.2s): {dados['t']}/0.2 = {dados['fator_t']:.2f}", 0, 1)
-    pdf.cell(0, 6, f"   Fator Distancia (610 / D)^x: (610/{dados['d']:.1f})^{dados['x_dist']} = {dados['fator_d']:.3f}", 0, 1)
-    pdf.cell(0, 6, f"   Fator de Calibracao (V): {dados['fator_v']}", 0, 1)
+    pdf.cell(0, 6, ft(f"C) Fatores de Correção:"), 0, 1)
+    pdf.cell(0, 6, ft(f"   Fator Tempo (t / 0.2s): {dados['t']}/0.2 = {dados['fator_t']:.2f}"), 0, 1)
+    pdf.cell(0, 6, ft(f"   Fator Distância (610 / D)^x: (610/{dados['d']:.1f})^{dados['x_dist']} = {dados['fator_d']:.3f}"), 0, 1)
+    pdf.cell(0, 6, ft(f"   Fator de Calibração (V): {dados['fator_v']}"), 0, 1)
     pdf.ln(2)
     
     # Passo 2.4
@@ -92,19 +105,24 @@ def gerar_pdf(dados):
 
     # 3. Resultado Final
     pdf.set_font("Arial", 'B', 11)
-    pdf.cell(0, 8, "3. Resultado e Classificacao", 1, 1, 'L', 1)
+    pdf.cell(0, 8, ft("3. Resultado e Classificação"), 1, 1, 'L', 1)
     pdf.ln(4)
     
     pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, f"Energia Incidente: {dados['e']:.2f} cal/cm2", 0, 1)
+    pdf.cell(0, 10, ft(f"Energia Incidente: {dados['e']:.2f} cal/cm²"), 0, 1)
     
     pdf.set_font("Arial", size=11)
-    pdf.cell(0, 8, f"Classificacao de Risco: {dados['cat']}", 0, 1)
+    pdf.cell(0, 8, ft(f"Classificação de Risco: {dados['cat']}"), 0, 1)
     
     if dados['e'] > 40:
         pdf.set_text_color(200, 0, 0)
-        pdf.cell(0, 8, "ATENCAO: Valor excede limite seguro para EPI comum.", 0, 1)
+        pdf.cell(0, 8, ft("ATENÇÃO: Valor excede limite seguro para EPI comum."), 0, 1)
         pdf.set_text_color(0, 0, 0)
+    
+    # Rodapé do documento
+    pdf.ln(10)
+    pdf.set_font("Arial", 'I', 8)
+    pdf.cell(0, 5, ft("Documento gerado automaticamente pela plataforma WEG GenAI - Módulo Arc Flash."), 0, 1, 'C')
         
     return pdf.output(dest='S').encode('latin-1')
 
@@ -202,7 +220,7 @@ with tab1:
 
     # LÓGICA DO CÁLCULO
     def calcular_completo():
-        # Lógica de Padrões (Detecta se foi inserido ou padrão)
+        # Lógica de Padrões
         is_gap_std = False
         if gap <= 0:
             g_c = 152.0 if tensao >= 1.0 else 25.0
@@ -219,7 +237,7 @@ with tab1:
 
         lg_i = math.log10(corrente) if corrente > 0 else 0
         
-        # Coeficientes IEEE 1584 Simplificado
+        # Coeficientes
         if tensao < 1.0: # BT
             k_base, k_i, k_g = -0.555, 1.081, 0.0011
             x_dist = 2.0
@@ -229,7 +247,7 @@ with tab1:
             x_dist = 2.0
             fator_v = 1.15
 
-        # Passo a Passo Matemático
+        # Passo a Passo
         lg_en = k_base + (k_i * lg_i) + (k_g * g_c)
         en_base = 10 ** lg_en
         
@@ -239,11 +257,11 @@ with tab1:
         e_final = 1.0 * en_base * fator_t * fator_d * fator_v
         
         # Classificação
-        if e_final < 1.2: cat, cor = "Risco Minimo", "green"
-        elif e_final < 4.0: cat, cor = "Categoria 1 ou 2", "orange"
-        elif e_final < 8.0: cat, cor = "Categoria 2", "darkorange"
-        elif e_final < 40.0: cat, cor = "Categoria 3 ou 4", "red"
-        else: cat, cor = "PERIGO EXTREMO", "black"
+        if e_final < 1.2: cat, cor = "Risco Mínimo (Isento)", "green"
+        elif e_final < 4.0: cat, cor = "Categoria 1 ou 2 (Até 4 cal)", "orange"
+        elif e_final < 8.0: cat, cor = "Categoria 2 (Até 8 cal)", "darkorange"
+        elif e_final < 40.0: cat, cor = "Categoria 3 ou 4 (Até 40 cal)", "red"
+        else: cat, cor = "PERIGO EXTREMO (>40 cal)", "black"
 
         return {
             'v': tensao, 'i': corrente, 't': tempo, 'g': g_c, 'd': d_c,
@@ -262,7 +280,7 @@ with tab1:
         else:
             st.warning("Preencha os campos obrigatórios.")
 
-    # EXIBIÇÃO RESULTADOS + BOTÕES
+    # EXIBIÇÃO RESULTADOS
     if st.session_state['ultimo_calculo']:
         res = st.session_state['ultimo_calculo']
         
@@ -273,7 +291,6 @@ with tab1:
         
         st.caption(f"Parâmetros: Gap {res['g']}mm | Distância {res['d']}mm")
         
-        # BOTÕES DE DOCUMENTAÇÃO
         st.subheader("📄 Documentação Técnica")
         st.info("Baixe o memorial detalhado para comprovação dos cálculos.")
         
