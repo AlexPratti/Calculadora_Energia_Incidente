@@ -8,7 +8,7 @@ from datetime import datetime
 # 1. CONFIGURAÇÃO DA PÁGINA
 # ==============================================================================
 st.set_page_config(
-    page_title="Calculadora Arc Flash WEG",
+    page_title="VERSÃO NOVA - COM HISTÓRICO",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -35,24 +35,13 @@ except:
     st.stop()
 
 # ==============================================================================
-# 3. ESTILO CSS (Tema Escuro/WEG)
+# 3. ESTILO CSS
 # ==============================================================================
 st.markdown("""
 <style>
-    .stButton>button {
-        width: 100%;
-        border-radius: 4px;
-        font-weight: bold;
-    }
-    /* Deixar o botão calcular vermelho */
+    .stButton>button { width: 100%; border-radius: 4px; font-weight: bold; }
     div[data-testid="stButton"] > button[kind="primary"] {
-        background-color: #ff4b4b;
-        color: white;
-        border: none;
-    }
-    .result-value {
-        font-size: 3rem; 
-        font-weight: bold;
+        background-color: #ff4b4b; color: white; border: none;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -68,7 +57,7 @@ if 'username' not in st.session_state:
 def login_screen():
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("## 🔐 Login WEG")
+        st.markdown("## 🔐 Login Nova Versão")
         with st.form("login"):
             user = st.text_input("Usuário")
             pwd = st.text_input("Senha", type="password")
@@ -97,21 +86,21 @@ def login_screen():
 if not st.session_state['logged_in']:
     login_screen()
 else:
-    # --- SIDEBAR ---
+    # --- SIDEBAR SIMPLIFICADA ---
     with st.sidebar:
-        st.success(f"Olá, {st.session_state.get('name')}")
-        if st.button("Sair"):
+        st.success(f"Logado como: {st.session_state.get('name')}")
+        if st.button("Sair do Sistema"):
             st.session_state['logged_in'] = False
             st.rerun()
             
-    # --- SISTEMA DE ABAS (Onde estava faltando) ---
-    tab_calc, tab_hist = st.tabs(["⚡ Simulação", "📜 Histórico Salvo"])
+    # --- SISTEMA DE ABAS (ISSO TEM QUE APARECER) ---
+    st.title("⚡ Calculadora WEG & Histórico")
+    tab_calc, tab_hist = st.tabs(["🧮 Simulação", "📂 Ver Histórico"])
 
     # --------------------------------------------------------------------------
     # ABA 1: CALCULADORA
     # --------------------------------------------------------------------------
     with tab_calc:
-        # Inputs Iniciais
         c_eq1, c_eq2 = st.columns(2)
         equipamento = c_eq1.text_input("Equipamento", "QGBT Geral")
         detalhe = c_eq2.text_input("Detalhe", "Disjuntor de Entrada")
@@ -123,68 +112,50 @@ else:
         tempo = c3.number_input("Tempo (s)", value=0.5, format="%.4f")
         
         c4, c5 = st.columns(2)
-        gap = c4.number_input("Gap (mm)", value=0.0) # Se quiser padrão 32, mude aqui
-        distancia = c5.number_input("Distância (mm)", value=0.0) # Se quiser padrão 450, mude aqui
+        gap = c4.number_input("Gap (mm)", value=32.0)
+        distancia = c5.number_input("Distância (mm)", value=450.0)
 
         # Botão Calcular
-        if st.button("CALCULAR", type="primary"):
-            # Lógica simples simulada para coincidir com seu print
-            # E = 11.21 (valor fixo do seu exemplo se inputs forem 13.8/17/0.5)
-            # Para ficar dinâmico:
-            try:
-                # Fórmula aproximada apenas para variar o número
-                energia = (tensao * corrente * tempo * 0.165) * 8 
-                if distancia > 0: energia = energia * (450/distancia) # ajuste dist
-                
-                # Categoria
-                cat_txt = "Cat 3 / 4"
-                cat_color = "red"
-                if energia < 1.2: 
-                    cat_txt = "Isento"
-                    cat_color = "green"
-                elif energia < 8:
-                    cat_txt = "Cat 1 / 2"
-                    cat_color = "orange"
-                
-                # Salva no estado para persistir após reload
-                st.session_state['resultado'] = {
-                    "energia": energia,
-                    "cat_txt": cat_txt,
-                    "cat_color": cat_color,
-                    "equip": equipamento,
-                    "det": detalhe,
-                    "inputs": [tensao, corrente, tempo, gap, distancia]
-                }
-            except:
-                st.error("Erro no cálculo")
+        if st.button("CALCULAR ENERGIA", type="primary"):
+            # Cálculo Simulado
+            energia = (tensao * corrente * tempo * 0.165) * 8 
+            
+            # Categoria
+            cat_txt = "Cat 3 / 4"
+            cat_color = "red"
+            if energia < 1.2: 
+                cat_txt = "Isento"
+                cat_color = "green"
+            elif energia < 8:
+                cat_txt = "Cat 1 / 2"
+                cat_color = "orange"
+            
+            # Salva no estado
+            st.session_state['resultado'] = {
+                "energia": energia,
+                "cat_txt": cat_txt,
+                "cat_color": cat_color,
+                "equip": equipamento,
+                "det": detalhe,
+                "inputs": [tensao, corrente, tempo, gap, distancia]
+            }
 
-        # Exibir Resultados (se houver)
+        # Exibir Resultados e Botão de Salvar
         if 'resultado' in st.session_state:
             res = st.session_state['resultado']
             
             st.divider()
-            st.subheader(f"Resultado: {res['equip']} - {res['det']}")
             
             rc1, rc2 = st.columns([1, 2])
             with rc1:
-                st.markdown("##### Energia")
-                st.markdown(f"<div class='result-value'>{res['energia']:.2f} cal/cm²</div>", unsafe_allow_html=True)
+                st.metric("Energia Incidente", f"{res['energia']:.2f} cal/cm²")
             with rc2:
-                st.markdown(f"""
-                <div style="background-color: {res['cat_color']}; color: white; padding: 25px; 
-                            text-align: center; border-radius: 8px; margin-top: 20px; font-size: 24px; font-weight: bold;">
-                    {res['cat_txt']}
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f"<h2 style='color:{res['cat_color']}'>{res['cat_txt']}</h2>", unsafe_allow_html=True)
 
-            # Botões de Download e SALVAR
-            st.write("Ações:")
-            ac1, ac2, ac3 = st.columns(3)
-            ac1.button("📄 PDF", disabled=True)
-            ac2.button("📝 Word", disabled=True)
+            st.divider()
             
             # --- O BOTÃO DE SALVAR ---
-            if ac3.button("💾 SALVAR NO HISTÓRICO"):
+            if st.button("💾 GRAVAR NO BANCO DE DADOS"):
                 try:
                     payload = {
                         "username": st.session_state['username'],
@@ -199,7 +170,7 @@ else:
                         "categoria": res['cat_txt']
                     }
                     supabase.table("arc_flash_history").insert(payload).execute()
-                    st.success("Salvo com sucesso! Verifique na aba Histórico.")
+                    st.success("✅ Salvo com sucesso! Verifique na aba 'Ver Histórico'.")
                 except Exception as e:
                     st.error(f"Erro ao salvar: {e}")
 
@@ -208,22 +179,18 @@ else:
     # --------------------------------------------------------------------------
     with tab_hist:
         st.header("Histórico de Simulações")
-        if st.button("🔄 Atualizar Lista"):
+        if st.button("🔄 Atualizar Tabela"):
             st.rerun()
             
         try:
-            # Busca dados
             response = supabase.table("arc_flash_history").select("*").order("created_at", desc=True).execute()
             df = pd.DataFrame(response.data)
             
             if not df.empty:
-                # Tratamento visual da tabela
                 display_df = df[['created_at', 'username', 'equipamento', 'energia_cal', 'categoria']].copy()
                 display_df.columns = ['Data', 'Usuário', 'Equipamento', 'Energia', 'Cat']
-                display_df['Data'] = pd.to_datetime(display_df['Data']).dt.strftime('%d/%m %H:%M')
-                
                 st.dataframe(display_df, use_container_width=True)
             else:
                 st.info("Nenhum registro encontrado.")
         except Exception as e:
-            st.warning("Tabela ainda vazia ou não encontrada.")
+            st.warning(f"Erro ao ler banco de dados: {e}")
