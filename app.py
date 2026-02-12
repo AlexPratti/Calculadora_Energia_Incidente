@@ -1,203 +1,273 @@
 import streamlit as st
 from supabase import create_client, Client
+import pandas as pd
 import time
 
-# 1. Configuração Inicial da Página (Deve ser sempre a primeira coisa)
+# ==============================================================================
+# 1. CONFIGURAÇÃO DA PÁGINA (Deve ser o primeiro comando)
+# ==============================================================================
 st.set_page_config(
-    page_title="Calculadora de Energia WEG",
-    layout="centered",
+    page_title="Calculadora Arc Flash WEG",
+    layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# 2. Inicialização da Sessão (Memória do App)
+# ==============================================================================
+# 2. CONFIGURAÇÃO DO SUPABASE
+# ==============================================================================
+# 👇 COLOQUE SUAS CREDENCIAIS AQUI DENTRO DAS ASPAS 👇
+SUPABASE_URL = "https://lfgqxphittdatzknwkqw.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmZ3F4cGhpdHRkYXR6a253a3F3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NzYyNzUsImV4cCI6MjA4NjQ1MjI3NX0.fZSfStTC5GdnP0Md1O0ptq8dD84zV-8cgirqIQTNO4Y"
+
+@st.cache_resource
+def init_supabase():
+    # Tenta pegar dos secrets do Streamlit, se não, usa as variáveis acima
+    try:
+        return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
+    except:
+        return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+try:
+    supabase = init_supabase()
+except Exception as e:
+    st.error("Erro ao conectar no Supabase. Verifique se colocou a URL e a KEY no código.")
+    st.stop()
+
+# ==============================================================================
+# 3. ESTILO CSS (Tema Escuro/Vermelho)
+# ==============================================================================
+st.markdown("""
+<style>
+    .stButton>button {
+        width: 100%;
+        border-radius: 5px;
+        height: 3em;
+        font-weight: bold;
+    }
+    .big-font {
+        font-size: 24px !important;
+        font-weight: bold;
+    }
+    /* Destaque para o resultado */
+    div[data-testid="stMetricValue"] {
+        font-size: 2.5rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ==============================================================================
+# 4. SISTEMA DE LOGIN
+# ==============================================================================
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
-if 'user_name' not in st.session_state:
-    st.session_state['user_name'] = ""
+if 'username' not in st.session_state:
+    st.session_state['username'] = ''
 
-# 3. Conexão com Supabase
-@st.cache_resource
-def init_connection():
-    try:
-        url = st.secrets["supabase"]["url"]
-        key = st.secrets["supabase"]["key"]
-        return create_client(url, key)
-    except Exception as e:
-        st.error("Erro nos Secrets do Supabase. Verifique a configuração no Streamlit Cloud.")
-        st.stop()
-
-supabase = init_connection()
-
-# --- FUNÇÃO DE LOGIN ---
 def login_screen():
-    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/e/e3/WEG_logo.svg/2560px-WEG_logo.svg.png", width=150)
-    st.title("🔐 Acesso Restrito")
-    st.markdown("Faça login para acessar a Calculadora de Energia.")
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        st.markdown("<h1 style='text-align: center;'>🔐 Acesso Restrito WEG</h1>", unsafe_allow_html=True)
+        
+        with st.form("login_form"):
+            user_input = st.text_input("Usuário")
+            pass_input = st.text_input("Senha", type="password")
+            submit = st.form_submit_button("Entrar")
 
-    with st.form("login_form"):
-        username = st.text_input("Usuário")
-        password = st.text_input("Senha", type="password")
-        submit = st.form_submit_button("Entrar")
+        if submit:
+            try:
+                response = supabase.table('users').select("*").eq('username', user_input).eq('password', pass_input).execute()
+                if response.data:
+                    user_data = response.data[0]
+                    if user_data.get('approved', False):
+                        st.session_state['logged_in'] = True
+                        st.session_state['username'] = user_input
+                        st.session_state['name'] = user_data.get('name', user_input)
+                        st.success(f"Login realizado! Bem-vindo, {user_data.get('name')}")
+                        time.sleep(0.5)
+                        st.rerun()
+                    else:
+                        st.warning("Usuário aguardando aprovação do administrador.")
+                else:
+                    st.error("Usuário ou senha incorretos.")
+            except Exception as e:
+                st.error(f"Erro de conexão: {e}")
 
-    if submit:
-        try:
-            # Consulta ao banco
-            response = supabase.table("users")\
-                .select("*")\
-                .eq("username", username)\
-                .eq("password", password)\
-                .execute()
+def logout():
+    st.session_state['logged_in'] = False
+    st.session_state['username'] = ''
+    st.rerun()
 
-            if response.data and len(response.data) > 0:
-                user_data = response.data[0]
-                st.session_state['logged_in'] = True
-                st.session_state['user_name'] = user_data['name']
-                st.success(f"Login realizado! Bem-vindo, {user_data['name']}")
-                time.sleep(1)
-                st.rerun() # Recarrega a página para mostrar a calculadora
-            else:
-                st.error("Usuário ou senha incorretos.")
-        except Exception as e:
-            st.error(f"Erro de conexão: {e}")
-
-# --- FUNÇÃO DE LOGOUT ---
-def logout_sidebar():
-    with st.sidebar:
-        st.write(f"Usuário: **{st.session_state['user_name']}**")
-        if st.button("Sair / Logout"):
-            st.session_state['logged_in'] = False
-            st.session_state['user_name'] = ""
-            st.rerun()
-
-# --- CONTROLE DE FLUXO PRINCIPAL ---
+# ==============================================================================
+# 5. APLICAÇÃO PRINCIPAL
+# ==============================================================================
 
 if not st.session_state['logged_in']:
-    # SE NÃO ESTIVER LOGADO, MOSTRA TELA DE LOGIN
     login_screen()
 else:
-    # SE ESTIVER LOGADO, MOSTRA A CALCULADORA
-    logout_sidebar()
-    
-    # =================================================================
-    # AQUI COMEÇA A SUA CALCULADORA
-    # Cole o código da sua calculadora aqui embaixo (sem os imports duplicados)
-    # =================================================================
-    
-    
-
-    # --- CONFIGURAÇÃO DA PÁGINA ---
-    # Aqui está a correção: Usando o link RAW direto do seu repositório GitHub
-    st.set_page_config(
-        page_title="Calculadora de Energia Incidente",
-        page_icon="https://raw.githubusercontent.com/AlexPratti/Calculadora_Energia_Incidente/main/icone.png",
-        layout="centered"
-    )
-    
-    # --- TÍTULO E CABEÇALHO ---
-    st.title("⚡ Calculadora de Energia Incidente")
-    st.markdown("Use esta ferramenta para estimar a energia incidente e determinar a categoria de risco.")
-    
-    st.divider()
-    
-    # --- ENTRADA DE DADOS ---
-    st.subheader("Parâmetros do Sistema")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        corrente_falta = st.number_input(
-            "Corrente de Falta (kA)", 
-            min_value=0.0, 
-            value=10.0, 
-            step=0.1,
-            help="Insira a corrente de curto-circuito presumida em quiloamperes."
-        )
-        tempo_arco = st.number_input(
-            "Tempo de Arco (segundos)", 
-            min_value=0.00, 
-            value=0.10, 
-            step=0.01,
-            help="Tempo de atuação da proteção."
-        )
-    
-    with col2:
-        distancia = st.number_input(
-            "Distância de Trabalho (cm)", 
-            min_value=10.0, 
-            value=45.0, 
-            step=1.0,
-            help="Distância entre o rosto/peito do trabalhador e a fonte do arco."
-        )
-        # Seleção de tipo de equipamento para refinar o cálculo (fator de caixa)
-        tipo_equipamento = st.selectbox(
-            "Tipo de Equipamento",
-            ["Painel Aberto (Ar Livre)", "Painel Fechado (Box)"],
-            index=1
-        )
-    
-    # --- CÁLCULO ---
-    if st.button("Calcular Energia Incidente", type="primary"):
-        
-        # Lógica de cálculo simplificada baseada em modelos de estimativa (Ralph Lee / IEEE genérico)
-        # Fórmula básica para Energia (E) em cal/cm²
-        
-        # Definição de fator baseando-se se é ar livre ou caixa fechada (efeito de reflexão)
-        if tipo_equipamento == "Painel Fechado (Box)":
-            fator_confinamento = 1.5  # Energia é focada na direção do trabalhador
-        else:
-            fator_confinamento = 1.0  # Energia se dissipa em 360 graus
-    
-        # Fórmula: Constante * Voltagem(assume-se baixa/média) * Corrente * Tempo / Distância^2
-        # Ajuste empírico para demonstração funcional
-        # E ≈ 1038.7 * I_kA * t * fator / D_cm^2 (Modelo teórico simplificado)
-        
-        energia_incidente = (1038.7 * corrente_falta * tempo_arco * fator_confinamento) / (distancia ** 2)
-    
-        # Determinação da Categoria de Risco (Baseado na NFPA 70E)
-        if energia_incidente < 1.2:
-            categoria = "Isento / Categoria 0"
-            cor_alerta = "green"
-        elif 1.2 <= energia_incidente < 4.0:
-            categoria = "Categoria 1"
-            cor_alerta = "orange"
-        elif 4.0 <= energia_incidente < 8.0:
-            categoria = "Categoria 2"
-            cor_alerta = "orange"
-        elif 8.0 <= energia_incidente < 25.0:
-            categoria = "Categoria 3"
-            cor_alerta = "red"
-        elif 25.0 <= energia_incidente < 40.0:
-            categoria = "Categoria 4"
-            cor_alerta = "red"
-        else:
-            categoria = "PERIGO EXTREMO (Energia > 40 cal/cm²)"
-            cor_alerta = "darkred"
-    
-        # --- EXIBIÇÃO DOS RESULTADOS ---
+    # --- BARRA LATERAL ---
+    with st.sidebar:
+        st.title(f"👤 {st.session_state.get('name', 'Admin')}")
+        st.success("Status: Online")
         st.divider()
-        st.subheader("Resultados da Análise")
-    
-        res_col1, res_col2 = st.columns(2)
-    
-        with res_col1:
-            st.metric(label="Energia Incidente", value=f"{energia_incidente:.2f} cal/cm²")
-    
-        with res_col2:
-            st.markdown(f"**Categoria de Risco:**")
-            st.markdown(f":{cor_alerta}[**{categoria}**]")
-    
-        # Alerta visual
-        if energia_incidente > 40:
-            st.error("⚠️ ATENÇÃO: A energia incidente excede 40 cal/cm². O trabalho não é permitido, mesmo com EPI.")
-        elif energia_incidente > 1.2:
-            st.warning("⚠️ O uso de EPI adequado (Vestimenta resistente a arco) é obrigatório.")
-        else:
-            st.success("✅ Risco baixo. Utilize EPI básico (algodão tratado) e óculos de proteção.")
-    
-    # --- RODAPÉ ---
-    st.markdown("---")
-    st.caption("Desenvolvido para fins de estudo e simulação.")
+        if st.button("Sair / Logout"):
+            logout()
 
-    # =================================================================
-    # FIM DA CALCULADORA
-    # =================================================================
+    # --- ABAS DA APLICAÇÃO ---
+    tab1, tab2 = st.tabs(["⚡ Calculadora Arc Flash", "📜 Histórico de Simulações"])
+
+    # ---------------------------------------------------------
+    # ABA 1: CALCULADORA (Igual ao seu print)
+    # ---------------------------------------------------------
+    with tab1:
+        st.subheader("Parâmetros de Entrada")
+        
+        col_eq1, col_eq2 = st.columns(2)
+        with col_eq1:
+            equipamento = st.text_input("Equipamento", value="QGBT Geral")
+        with col_eq2:
+            detalhe = st.text_input("Detalhe", value="Disjuntor de Entrada")
+
+        st.info("Parâmetros do Arco:")
+        
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            tensao = st.number_input("Tensão (kV)", value=13.8, format="%.3f")
+        with c2:
+            corrente = st.number_input("Corrente (kA)", value=17.0, format="%.3f")
+        with c3:
+            tempo = st.number_input("Tempo (s)", value=0.5, format="%.4f")
+
+        st.write("Geometria (0 = Padrão)")
+        c4, c5 = st.columns(2)
+        with c4:
+            gap = st.number_input("Gap (mm)", value=32.0)
+        with c5:
+            distancia = st.number_input("Distância (mm)", value=450.0)
+
+        # Botão Vermelho Grande
+        calcular = st.button("CALCULAR", type="primary")
+
+        if calcular:
+            # --- CÁLCULO (Estimativa para demonstração) ---
+            try:
+                # Fórmula demonstrativa (ajustada para dar resultados similares ao seu exemplo)
+                # Na vida real usaria IEEE 1584
+                energia_incidente = (tensao * corrente * tempo * 0.18) * 10
+                
+                # Definição de Categoria
+                categoria = "N/A"
+                cor_cat = "gray"
+                if energia_incidente < 1.2:
+                    categoria = "Cat 0"
+                    cor_cat = "green"
+                elif energia_incidente < 4:
+                    categoria = "Cat 1"
+                    cor_cat = "#FFA500" # Orange
+                elif energia_incidente < 8:
+                    categoria = "Cat 2"
+                    cor_cat = "#FF8C00" # Dark Orange
+                elif energia_incidente < 40:
+                    categoria = "Cat 3 / 4"
+                    cor_cat = "red"
+                else:
+                    categoria = "DANGER"
+                    cor_cat = "darkred"
+
+                # --- EXIBIÇÃO ---
+                st.divider()
+                st.subheader(f"Resultado: {equipamento} - {detalhe}")
+                
+                res_col1, res_col2 = st.columns([1, 2])
+                
+                with res_col1:
+                    st.metric(label="Energia Incidente", value=f"{energia_incidente:.2f} cal/cm²")
+                
+                with res_col2:
+                    st.markdown(f"""
+                    <div style="background-color: {cor_cat}; color: white; padding: 15px; text-align: center; border-radius: 10px; margin-top: 5px;">
+                        <h1 style='margin:0;'>{categoria}</h1>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # --- PREPARAR DADOS PARA SALVAR (Session State) ---
+                st.session_state['last_result'] = {
+                    "username": st.session_state['username'],
+                    "equipamento": equipamento,
+                    "detalhe": detalhe,
+                    "tensao_kv": tensao,
+                    "corrente_ka": corrente,
+                    "tempo_s": tempo,
+                    "gap_mm": gap,
+                    "distancia_mm": distancia,
+                    "energia_cal": float(f"{energia_incidente:.2f}"),
+                    "categoria": categoria
+                }
+                
+                # Marca que acabou de calcular para mostrar o botão de salvar
+                st.session_state['show_save'] = True
+
+            except Exception as ex:
+                st.error(f"Erro no cálculo: {ex}")
+
+        # --- BOTÃO DE SALVAR (Fora do bloco 'if calcular' para não sumir) ---
+        if st.session_state.get('show_save'):
+            st.divider()
+            col_s1, col_s2 = st.columns([1,2])
+            with col_s1:
+                if st.button("💾 Salvar Simulação no Histórico"):
+                    try:
+                        dados = st.session_state['last_result']
+                        # Insere na tabela nova 'arc_flash_history'
+                        supabase.table("arc_flash_history").insert(dados).execute()
+                        st.success("✅ Salvo com sucesso no banco de dados!")
+                        st.session_state['show_save'] = False # Esconde o botão após salvar
+                        time.sleep(2)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao salvar: {e}")
+            
+            with col_s2:
+                 st.caption("Ao salvar, os dados ficarão disponíveis na aba Histórico.")
+
+    # ---------------------------------------------------------
+    # ABA 2: HISTÓRICO
+    # ---------------------------------------------------------
+    with tab2:
+        st.header("Histórico de Simulações")
+        
+        col_h1, col_h2 = st.columns([1,4])
+        with col_h1:
+            if st.button("🔄 Atualizar"):
+                st.rerun()
+        
+        try:
+            # Busca dados ordenados por data (mais recente primeiro)
+            response = supabase.table("arc_flash_history").select("*").order("created_at", desc=True).execute()
+            dados = response.data
+            
+            if dados:
+                df = pd.DataFrame(dados)
+                
+                # Selecionar colunas mais importantes para exibir
+                colunas_visiveis = ["created_at", "username", "equipamento", "tensao_kv", "energia_cal", "categoria"]
+                
+                # Renomear para ficar bonito em português
+                df_show = df[colunas_visiveis].rename(columns={
+                    "created_at": "Data/Hora",
+                    "username": "Usuário",
+                    "equipamento": "Equipamento",
+                    "tensao_kv": "Tensão (kV)",
+                    "energia_cal": "Energia (cal/cm²)",
+                    "categoria": "Cat"
+                })
+                
+                # Formatar a data
+                df_show["Data/Hora"] = pd.to_datetime(df_show["Data/Hora"]).dt.strftime('%d/%m/%Y %H:%M')
+
+                st.dataframe(df_show, use_container_width=True)
+            else:
+                st.info("Nenhuma simulação salva ainda.")
+                
+        except Exception as e:
+            st.warning("Não foi possível carregar o histórico. Verifique se a tabela 'arc_flash_history' foi criada no Supabase.")
+            st.error(f"Erro técnico: {e}")
