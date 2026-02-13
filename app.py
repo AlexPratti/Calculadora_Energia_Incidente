@@ -173,9 +173,7 @@ if not st.session_state['logged_in']:
                                 st.session_state['user_name'] = data.get('name')
                                 st.session_state['user_login'] = email_db
                                 
-                                # =======================================================
-                                # REGISTRO AUTOMÁTICO DE LOGIN NO HISTÓRICO
-                                # =======================================================
+                                # LOG AUTOMÁTICO
                                 try:
                                     supabase.table("arc_flash_history").insert({
                                         "username": email_db,
@@ -271,7 +269,7 @@ if isAdmin:
     except: pass
     
     st.sidebar.markdown("---")
-    # Exclusão
+    # Exclusão Completa (Cascata manual)
     try:
         all_users = supabase.table('users').select("*").neq('username', 'admin').neq('username', st.session_state['user_login']).execute()
         if all_users.data:
@@ -280,9 +278,15 @@ if isAdmin:
             if user_display != "...":
                 email_to_delete = users_map[user_display]
                 if st.sidebar.button(f"🗑️ Excluir Definitivamente"):
-                    supabase.table('users').delete().eq('username', email_to_delete).execute()
-                    st.sidebar.success("Usuário excluído.")
-                    st.rerun()
+                    try:
+                        # 1. Deleta todo o histórico
+                        supabase.table('arc_flash_history').delete().eq('username', email_to_delete).execute()
+                        # 2. Deleta o usuário
+                        supabase.table('users').delete().eq('username', email_to_delete).execute()
+                        st.sidebar.success("Usuário e histórico excluídos.")
+                        st.rerun()
+                    except Exception as e:
+                        st.sidebar.error(f"Erro ao excluir: {e}")
     except: pass
 
 st.sidebar.markdown("---")
@@ -440,16 +444,10 @@ if isAdmin and tab3:
                     'energia_cal': 'Energia', 'tensao_kv': 'kV', 'corrente_ka': 'kA'
                 }
                 df.rename(columns=cols_map, inplace=True)
-                
-                # --- CORREÇÃO ROBUSTA DE HORA (UTC -> SP) ---
+                # UTC -> SP
                 if 'Data/Hora' in df.columns:
-                    # 1. Converte string para datetime e FORÇA UTC
                     df['Data/Hora'] = pd.to_datetime(df['Data/Hora'], utc=True)
-                    # 2. Converte para o fuso de SP
-                    df['Data/Hora'] = df['Data/Hora'].dt.tz_convert('America/Sao_Paulo')
-                    # 3. Formata para string
-                    df['Data/Hora'] = df['Data/Hora'].dt.strftime('%d/%m/%Y %H:%M')
-                    
+                    df['Data/Hora'] = df['Data/Hora'].dt.tz_convert('America/Sao_Paulo').dt.strftime('%d/%m/%Y %H:%M')
                 final_cols = [c for c in cols_map.values() if c in df.columns]
                 st.dataframe(df[final_cols], use_container_width=True, hide_index=True)
             else:
