@@ -161,10 +161,13 @@ if not st.session_state['logged_in']:
                         
                         if res.data:
                             data = res.data[0]
+                            # Verifica aprovação
                             if data.get('approved'):
-                                # Verifica Contrato
+                                
+                                # Verifica Contrato (Data)
                                 exp_str = data.get('expiration_date')
                                 contrato_valido = True
+                                
                                 if exp_str:
                                     try:
                                         validade = datetime.strptime(exp_str, '%Y-%m-%d').date()
@@ -173,6 +176,7 @@ if not st.session_state['logged_in']:
 
                                 if contrato_valido:
                                     st.session_state['logged_in'] = True
+                                    
                                     email_db = data.get('username')
                                     if email_db == 'admin' or nome_login.lower() == 'admin':
                                         st.session_state['user_role'] = 'admin'
@@ -182,7 +186,7 @@ if not st.session_state['logged_in']:
                                     st.session_state['user_name'] = data.get('name')
                                     st.session_state['user_login'] = email_db
                                     
-                                    # LOG AUTOMÁTICO
+                                    # LOG AUTOMÁTICO DE LOGIN
                                     try:
                                         supabase.table("arc_flash_history").insert({
                                             "username": email_db,
@@ -194,6 +198,7 @@ if not st.session_state['logged_in']:
                                             "energia_cal": 0.0
                                         }).execute()
                                     except: pass
+                                    
                                     st.rerun()
                                 else:
                                     st.error(f"⛔ Contrato expirado em {validade.strftime('%d/%m/%Y')}.")
@@ -208,7 +213,12 @@ if not st.session_state['logged_in']:
             with st.form("cadastro_form"):
                 st.markdown("### Novo Cadastro")
                 new_name = st.text_input("Nome")
+                
+                # --- CAMPO E-MAIL COM AVISO ---
                 new_email = st.text_input("E-mail")
+                st.caption("⚠️ **Importante:** Verifique se o e-mail está correto. O administrador entrará em contato através dele para validar seu cadastro antes da liberação.")
+                # ------------------------------
+                
                 new_pass = st.text_input("Defina sua Senha", type="password")
                 reg_btn = st.form_submit_button("Solicitar Acesso")
                 
@@ -269,6 +279,7 @@ if isAdmin:
             lista_pend = {f"{u['name']} ({u['username']})": u['username'] for u in pendentes.data}
             sel_display = st.sidebar.selectbox("Liberar:", list(lista_pend.keys()))
             sel_email = lista_pend[sel_display]
+            
             if st.sidebar.button(f"✅ Liberar + 1 Ano"):
                 validade_nova = (datetime.now() + timedelta(days=365)).strftime('%Y-%m-%d')
                 supabase.table('users').update({
@@ -282,6 +293,7 @@ if isAdmin:
     except: pass
     
     st.sidebar.markdown("---")
+    
     # Bloqueio
     try:
         active_users = supabase.table('users').select("*").eq('approved', True).neq('username', 'admin').neq('username', st.session_state['user_login']).execute()
@@ -297,7 +309,8 @@ if isAdmin:
     except: pass
 
     st.sidebar.markdown("---")
-    # Exclusão
+    
+    # Exclusão Completa
     try:
         all_users = supabase.table('users').select("*").neq('username', 'admin').neq('username', st.session_state['user_login']).execute()
         if all_users.data:
@@ -326,9 +339,8 @@ if 'corrente_stored' not in st.session_state: st.session_state['corrente_stored'
 if 'resultado_icc_detalhe' not in st.session_state: st.session_state['resultado_icc_detalhe'] = None
 if 'ultimo_calculo' not in st.session_state: st.session_state['ultimo_calculo'] = None
 
-# ABAS (4 se Admin)
+# ABAS
 if isAdmin:
-    # Nova Aba adicionada: "👥 Usuários"
     tab1, tab2, tab3, tab4 = st.tabs(["🔥 Energia Incidente", "🧮 Icc (Curto)", "👥 Usuários (Admin)", "📂 Logs de Atividades"])
 else:
     tab1, tab2 = st.tabs(["🔥 Energia Incidente", "🧮 Icc (Curto)"])
