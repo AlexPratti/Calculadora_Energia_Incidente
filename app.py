@@ -161,9 +161,9 @@ if not st.session_state['logged_in']:
                             data = res.data[0]
                             if data.get('approved'):
                                 st.session_state['logged_in'] = True
-                                # Se o usuário for 'admin' ou tiver role 'admin', é admin.
-                                role_db = data.get('role', 'user')
-                                if user == 'admin' or role_db == 'admin':
+                                
+                                # LÓGICA CORRIGIDA: Se for 'admin', é admin. Se não, é user.
+                                if user == 'admin':
                                     st.session_state['user_role'] = 'admin'
                                 else:
                                     st.session_state['user_role'] = 'user'
@@ -193,9 +193,12 @@ if not st.session_state['logged_in']:
                             if check.data:
                                 st.error("Este usuário já existe.")
                             else:
+                                # CORREÇÃO: Removemos o campo 'role' pois ele não existe no banco
                                 payload = {
-                                    "username": new_user, "name": new_name, "password": new_pass,
-                                    "role": "user", "approved": False
+                                    "username": new_user,
+                                    "name": new_name,
+                                    "password": new_pass,
+                                    "approved": False
                                 }
                                 supabase.table('users').insert(payload).execute()
                                 st.success("✅ Cadastro realizado! Aguarde aprovação.")
@@ -353,7 +356,6 @@ with tab1:
         st.divider()
         st.caption("Ações:")
         
-        # --- BOTÕES ALINHADOS ---
         cb1, cb2, cb3 = st.columns(3)
         with cb1:
             if st.button("💾 Gravar no Banco de Dados", use_container_width=True):
