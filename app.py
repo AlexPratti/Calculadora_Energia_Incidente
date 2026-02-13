@@ -140,7 +140,7 @@ def gerar_word(dados):
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
     st.session_state['user_role'] = None
-    st.session_state['user_login'] = None # Guardará o E-mail para referência
+    st.session_state['user_login'] = None
     st.session_state['user_name'] = None
 
 if not st.session_state['logged_in']:
@@ -151,14 +151,14 @@ if not st.session_state['logged_in']:
         
         if modo == "Entrar":
             with st.form("login_form"):
-                # ALTERADO: Pede Nome em vez de E-mail
-                nome_login = st.text_input("Nome") 
-                pwd = st.text_input("Senha", type="password")
+                # A chave 'key' força a atualização visual do componente
+                nome_login = st.text_input("Nome", key="input_nome_login_unique") 
+                pwd = st.text_input("Senha", type="password", key="input_pwd_login_unique")
                 submitted = st.form_submit_button("Entrar", type="primary")
                 
                 if submitted:
                     try:
-                        # Busca pela coluna 'name' e 'password'
+                        # Busca o usuário pelo Nome
                         res = supabase.table('users').select("*").eq('name', nome_login).eq('password', pwd).execute()
                         
                         if res.data:
@@ -166,15 +166,15 @@ if not st.session_state['logged_in']:
                             if data.get('approved'):
                                 st.session_state['logged_in'] = True
                                 
-                                # Verifica se é admin (Pode checar o username 'admin' ou pelo nome)
-                                # Para garantir, checamos se o nome ou username é 'admin'
-                                if data.get('username') == 'admin' or nome_login.lower() == 'admin':
+                                # Verifica admin (Se o nome ou o email for admin)
+                                email_db = data.get('username')
+                                if email_db == 'admin' or nome_login.lower() == 'admin':
                                     st.session_state['user_role'] = 'admin'
                                 else:
                                     st.session_state['user_role'] = 'user'
                                 
                                 st.session_state['user_name'] = data.get('name')
-                                st.session_state['user_login'] = data.get('username') # Guarda o email internamente
+                                st.session_state['user_login'] = email_db # Usa email para salvar histórico
                                 st.rerun()
                             else:
                                 st.warning("🚫 Usuário pendente de aprovação.")
@@ -195,19 +195,18 @@ if not st.session_state['logged_in']:
                 if reg_btn:
                     if new_email and new_name and new_pass:
                         try:
-                            # Verifica duplicidade pelo email (chave única)
                             check = supabase.table('users').select("*").eq('username', new_email).execute()
                             if check.data:
                                 st.error("Este e-mail já está cadastrado.")
                             else:
                                 payload = {
-                                    "username": new_email, # Salva email no username (ID Único)
-                                    "name": new_name,      # Salva nome no name
+                                    "username": new_email, 
+                                    "name": new_name,
                                     "password": new_pass,
                                     "approved": False
                                 }
                                 supabase.table('users').insert(payload).execute()
-                                st.success("✅ Cadastro realizado! Aguarde aprovação do administrador.")
+                                st.success("✅ Cadastro realizado! Aguarde aprovação.")
                         except Exception as e:
                             st.error(f"Erro ao cadastrar: {e}")
                     else:
@@ -215,7 +214,7 @@ if not st.session_state['logged_in']:
     st.stop()
 
 # ==============================================================================
-# 4. APP PRINCIPAL (SÓ EXECUTA SE LOGADO)
+# 4. APP PRINCIPAL
 # ==============================================================================
 
 st.sidebar.success(f"Olá, {st.session_state['user_name']}")
@@ -228,7 +227,6 @@ with st.sidebar.expander("🔑 Alterar Minha Senha"):
         btn_mudar = st.form_submit_button("Atualizar")
         if btn_mudar:
             try:
-                # Usa user_login (email) para garantir unicidade na troca de senha
                 chk = supabase.table('users').select("*").eq('username', st.session_state['user_login']).eq('password', senha_atual).execute()
                 if chk.data:
                     supabase.table('users').update({'password': nova_senha}).eq('username', st.session_state['user_login']).execute()
@@ -248,11 +246,9 @@ if isAdmin:
         pendentes = supabase.table('users').select("*").eq('approved', False).execute()
         if pendentes.data:
             st.sidebar.warning(f"Pendentes: {len(pendentes.data)}")
-            # Mostra Nome (Email)
             lista_pend = {f"{u['name']} ({u['username']})": u['username'] for u in pendentes.data}
             sel_display = st.sidebar.selectbox("Aprovar:", list(lista_pend.keys()))
             sel_email = lista_pend[sel_display]
-            
             if st.sidebar.button(f"Liberar Acesso"):
                 supabase.table('users').update({'approved': True}).eq('username', sel_email).execute()
                 st.sidebar.success(f"Aprovado!")
@@ -268,7 +264,6 @@ if isAdmin:
         if all_users.data:
             users_map = {f"{u['name']} ({u['username']})": u['username'] for u in all_users.data}
             user_display = st.sidebar.selectbox("Excluir Usuário:", ["..."] + list(users_map.keys()))
-            
             if user_display != "...":
                 email_to_delete = users_map[user_display]
                 if st.sidebar.button(f"🗑️ Excluir Definitivamente"):
