@@ -14,7 +14,7 @@ from datetime import datetime
 # ==============================================================================
 st.set_page_config(page_title="Cálculo de Energia Incidente", page_icon="⚡", layout="wide")
 
-# 👇 CREDENCIAIS (JÁ PREENCHIDAS)
+# 👇 CREDENCIAIS (Mantidas)
 SUPABASE_URL = "https://lfgqxphittdatzknwkqw.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmZ3F4cGhpdHRkYXR6a253a3F3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NzYyNzUsImV4cCI6MjA4NjQ1MjI3NX0.fZSfStTC5GdnP0Md1O0ptq8dD84zV-8cgirqIQTNO4Y"
 
@@ -153,14 +153,14 @@ def main_app_logic():
     if 'resultado_icc_detalhe' not in st.session_state: st.session_state['resultado_icc_detalhe'] = None
     if 'ultimo_calculo' not in st.session_state: st.session_state['ultimo_calculo'] = None
 
-    # --- LÓGICA DE ABAS (ADMIN VÊ 3, USER VÊ 2) ---
+    # Lógica de Permissão
     isAdmin = (st.session_state.get('user_role') == 'admin')
     
     if isAdmin:
         tab1, tab2, tab3 = st.tabs(["🔥 Energia Incidente", "🧮 Icc (Curto)", "📂 Histórico (Admin)"])
     else:
         tab1, tab2 = st.tabs(["🔥 Energia Incidente", "🧮 Icc (Curto)"])
-        tab3 = None # Usuário comum não tem essa variável
+        tab3 = None
 
     # ========================================================
     # ABA 1: CÁLCULO ARC FLASH
@@ -185,7 +185,7 @@ def main_app_logic():
         with c4: gap = st.number_input("Gap (mm)", value=0.0, step=1.0, help="0 = Padrão Automático")
         with c5: distancia = st.number_input("Distância (mm)", value=0.0, step=10.0, help="0 = Padrão Automático")
 
-        # Função de Cálculo (Lógica Original)
+        # Função de Cálculo
         def calcular_completo():
             g_c = gap if gap > 0 else (152.0 if tensao >= 1.0 else 25.0)
             d_c = distancia if distancia > 0 else (914.0 if tensao >= 1.0 else 457.2)
@@ -245,29 +245,34 @@ def main_app_logic():
             st.divider()
             st.caption("Ações:")
             
-            # --- SALVAR (GRAVA NO SUPABASE MAS NÃO MOSTRA HISTÓRICO AQUI) ---
-            if st.button("💾 Gravar no Banco de Dados"):
-                try:
-                    payload = {
-                        "username": st.session_state['user_login'],
-                        "tag_equipamento": res['eq1'] if res['eq1'] else "Sem Tag",
-                        "tensao_kv": res['v'],
-                        "corrente_ka": res['i'],
-                        "tempo_s": res['t'],
-                        "distancia_mm": res['d'],
-                        "energia_cal": float(f"{res['e']:.2f}")
-                    }
-                    supabase.table("arc_flash_history").insert(payload).execute()
-                    st.toast("✅ Registro salvo no banco de dados!", icon="💾")
-                except Exception as e:
-                    st.error(f"Erro ao salvar: {e}")
+            # --- BOTÕES EM LINHA (3 COLUNAS) ---
+            col_b1, col_b2, col_b3 = st.columns(3)
+            
+            with col_b1:
+                # Botão Salvar
+                if st.button("💾 Gravar no Banco de Dados", use_container_width=True):
+                    try:
+                        payload = {
+                            "username": st.session_state['user_login'],
+                            "tag_equipamento": res['eq1'] if res['eq1'] else "Sem Tag",
+                            "tensao_kv": res['v'],
+                            "corrente_ka": res['i'],
+                            "tempo_s": res['t'],
+                            "distancia_mm": res['d'],
+                            "energia_cal": float(f"{res['e']:.2f}")
+                        }
+                        supabase.table("arc_flash_history").insert(payload).execute()
+                        st.toast("✅ Salvo com sucesso!", icon="💾")
+                    except Exception as e:
+                        st.error(f"Erro: {e}")
 
-            # Botões de Download
-            dl1, dl2 = st.columns(2)
-            with dl1:
+            with col_b2:
+                # Botão PDF
                 pdf_data = gerar_pdf(res)
                 st.download_button("📥 Baixar PDF", data=pdf_data, file_name="memorial.pdf", mime="application/pdf", use_container_width=True)
-            with dl2:
+            
+            with col_b3:
+                # Botão Word
                 docx_data = gerar_word(res)
                 st.download_button("📝 Baixar Word", data=docx_data, file_name="memorial.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
 
@@ -316,101 +321,163 @@ def main_app_logic():
     if isAdmin and tab3:
         with tab3:
             st.header("📂 Banco de Dados de Simulações")
-            st.write("Abaixo estão listados todos os cálculos salvos no sistema.")
-            
             if st.button("🔄 Atualizar Dados"):
                 st.rerun()
             
             try:
-                # Busca histórico completo
                 res_hist = supabase.table("arc_flash_history").select("*").order("created_at", desc=True).execute()
-                
                 if res_hist.data:
                     df = pd.DataFrame(res_hist.data)
-                    
-                    # Tratamento e Renomeação para Exibição
-                    # Verifica quais colunas vieram do banco para evitar erro
                     cols_map = {
-                        'created_at': 'Data/Hora',
-                        'username': 'Usuário',
-                        'tag_equipamento': 'Tag/Equip',
-                        'energia_cal': 'Energia (cal/cm²)',
-                        'tensao_kv': 'Tensão (kV)',
-                        'corrente_ka': 'Corr. (kA)',
-                        'tempo_s': 'Tempo (s)',
-                        'distancia_mm': 'Dist. (mm)'
+                        'created_at': 'Data/Hora', 'username': 'Usuário', 'tag_equipamento': 'Tag/Equip',
+                        'energia_cal': 'Energia', 'tensao_kv': 'kV', 'corrente_ka': 'kA', 'tempo_s': 'Tempo', 'distancia_mm': 'Dist.'
                     }
-                    
-                    # Renomeia
                     df.rename(columns=cols_map, inplace=True)
-                    
-                    # Formata Data
                     if 'Data/Hora' in df.columns:
                         df['Data/Hora'] = pd.to_datetime(df['Data/Hora']).dt.strftime('%d/%m/%Y %H:%M')
-
-                    # Seleciona apenas as colunas que interessam e estão presentes
                     cols_final = [c for c in cols_map.values() if c in df.columns]
-                    
                     st.dataframe(df[cols_final], use_container_width=True, hide_index=True)
                 else:
-                    st.info("Nenhum registro encontrado no banco de dados.")
-                    
+                    st.info("Nenhum registro encontrado.")
             except Exception as e:
                 st.error(f"Erro ao carregar banco de dados: {e}")
 
 # ==============================================================================
-# 4. SISTEMA DE LOGIN (VIA SUPABASE)
+# 4. SISTEMA DE LOGIN, CADASTRO E GESTÃO (SUPABASE)
 # ==============================================================================
 
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
     st.session_state['user_role'] = None
-    st.session_state['user_name'] = None
-    st.session_state['user_login'] = None
 
-# Sidebar Admin (Mantido lógica, mas adaptado para Supabase se necessário futuramente)
-def admin_panel():
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🛡️ Admin")
-    st.sidebar.info("Painel de gestão disponível via Supabase Dashboard.")
-
-# Tela de Login
-if not st.session_state['logged_in']:
-    col1, col2, col3 = st.columns([1,1,1])
-    with col2:
-        st.title("🔒 Login")
-        with st.form("login_form"):
-            user = st.text_input("Usuário")
-            pwd = st.text_input("Senha", type="password")
-            submitted = st.form_submit_button("Entrar", type="primary")
-            
-            if submitted:
-                try:
-                    res = supabase.table('users').select("*").eq('username', user).eq('password', pwd).execute()
-                    if res.data:
-                        data = res.data[0]
-                        if data.get('approved'):
-                            st.session_state['logged_in'] = True
-                            st.session_state['user_role'] = 'admin' if user == 'admin' else 'user'
-                            st.session_state['user_name'] = data.get('name', user)
-                            st.session_state['user_login'] = user
-                            st.rerun()
-                        else:
-                            st.warning("Usuário pendente de aprovação.")
-                    else:
-                        st.error("Dados incorretos.")
-                except Exception as e:
-                    st.error(f"Erro de conexão: {e}")
-
-else:
-    # Sidebar
+# --- SIDEBAR (QUANDO LOGADO) ---
+if st.session_state['logged_in']:
     st.sidebar.success(f"Olá, {st.session_state['user_name']}")
-    if st.sidebar.button("Sair"):
+    
+    # 1. TROCA DE SENHA
+    with st.sidebar.expander("🔑 Alterar Minha Senha"):
+        with st.form("mudar_senha"):
+            senha_atual = st.text_input("Senha Atual", type="password")
+            nova_senha = st.text_input("Nova Senha", type="password")
+            btn_mudar = st.form_submit_button("Atualizar")
+            
+            if btn_mudar:
+                try:
+                    # Verifica se a senha atual confere no banco
+                    chk = supabase.table('users').select("*").eq('username', st.session_state['user_login']).eq('password', senha_atual).execute()
+                    if chk.data:
+                        # Atualiza
+                        supabase.table('users').update({'password': nova_senha}).eq('username', st.session_state['user_login']).execute()
+                        st.success("Senha alterada!")
+                    else:
+                        st.error("Senha atual incorreta.")
+                except Exception as e:
+                    st.error(f"Erro: {e}")
+
+    # 2. PAINEL ADMIN (SÓ PARA ADMIN)
+    if st.session_state['user_role'] == 'admin':
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("🛡️ Admin Panel")
+        
+        # Aprovações
+        try:
+            pendentes = supabase.table('users').select("*").eq('approved', False).execute()
+            if pendentes.data:
+                st.sidebar.warning(f"Pendentes: {len(pendentes.data)}")
+                lista_pend = {u['username']: u['name'] for u in pendentes.data}
+                sel_user = st.sidebar.selectbox("Aprovar:", list(lista_pend.keys()))
+                
+                if st.sidebar.button(f"Liberar {sel_user}"):
+                    supabase.table('users').update({'approved': True}).eq('username', sel_user).execute()
+                    st.sidebar.success(f"{sel_user} aprovado!")
+                    st.rerun()
+            else:
+                st.sidebar.info("Sem aprovações pendentes.")
+                
+            st.sidebar.markdown("---")
+            # Exclusão de usuários
+            all_users = supabase.table('users').select("username").neq('username', 'admin').neq('username', st.session_state['user_login']).execute()
+            if all_users.data:
+                lista_del = [u['username'] for u in all_users.data]
+                user_del = st.sidebar.selectbox("Excluir Usuário:", ["..."] + lista_del)
+                if user_del != "...":
+                    if st.sidebar.button(f"Confirmar Exclusão de {user_del}"):
+                        supabase.table('users').delete().eq('username', user_del).execute()
+                        st.sidebar.success("Excluído.")
+                        st.rerun()
+                        
+        except Exception as e:
+            st.sidebar.error("Erro ao carregar dados de admin.")
+
+    # 3. LOGOUT
+    st.sidebar.markdown("---")
+    if st.sidebar.button("Sair do Sistema"):
         st.session_state['logged_in'] = False
         st.rerun()
 
-    if st.session_state['user_role'] == 'admin':
-        admin_panel()
-
-    # Executa o App Principal
+    # RENDERIZA O APP PRINCIPAL
     main_app_logic()
+
+else:
+    # --- TELA DE LOGIN / CADASTRO ---
+    col1, col2, col3 = st.columns([1,1,1])
+    with col2:
+        st.title("🔒 Sistema Arc Flash")
+        
+        # Alternância entre Login e Cadastro
+        modo = st.radio("Acesso:", ["Entrar", "Criar Conta"], horizontal=True)
+        
+        if modo == "Entrar":
+            with st.form("login_form"):
+                user = st.text_input("Usuário")
+                pwd = st.text_input("Senha", type="password")
+                submitted = st.form_submit_button("Entrar", type="primary")
+                
+                if submitted:
+                    try:
+                        res = supabase.table('users').select("*").eq('username', user).eq('password', pwd).execute()
+                        if res.data:
+                            data = res.data[0]
+                            if data.get('approved'):
+                                st.session_state['logged_in'] = True
+                                st.session_state['user_role'] = data.get('role', 'user') # Pega do banco ou assume user
+                                st.session_state['user_name'] = data.get('name', user)
+                                st.session_state['user_login'] = user
+                                st.rerun()
+                            else:
+                                st.warning("🚫 Usuário pendente de aprovação pelo Admin.")
+                        else:
+                            st.error("Usuário ou senha incorretos.")
+                    except Exception as e:
+                        st.error(f"Erro de conexão: {e}")
+        
+        else: # Criar Conta
+            with st.form("cadastro_form"):
+                st.markdown("### Novo Cadastro")
+                new_user = st.text_input("Defina seu Usuário")
+                new_name = st.text_input("Seu Nome Completo")
+                new_pass = st.text_input("Defina sua Senha", type="password")
+                reg_btn = st.form_submit_button("Solicitar Acesso")
+                
+                if reg_btn:
+                    if new_user and new_name and new_pass:
+                        try:
+                            # Verifica se já existe
+                            check = supabase.table('users').select("*").eq('username', new_user).execute()
+                            if check.data:
+                                st.error("Este usuário já existe.")
+                            else:
+                                # Insere (approved = False por padrão se não especificar, ou forçamos False)
+                                payload = {
+                                    "username": new_user,
+                                    "name": new_name,
+                                    "password": new_pass,
+                                    "role": "user",
+                                    "approved": False
+                                }
+                                supabase.table('users').insert(payload).execute()
+                                st.success("✅ Cadastro realizado! Aguarde aprovação do administrador.")
+                        except Exception as e:
+                            st.error(f"Erro ao cadastrar: {e}")
+                    else:
+                        st.warning("Preencha todos os campos.")
