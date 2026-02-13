@@ -151,15 +151,13 @@ if not st.session_state['logged_in']:
         
         if modo == "Entrar":
             with st.form("login_form"):
-                # Campo Rotulado como "Nome", mas o código busca também por username
                 nome_login = st.text_input("Nome", key="input_nome_login_fix") 
                 pwd = st.text_input("Senha", type="password", key="input_pwd_login_fix")
                 submitted = st.form_submit_button("Entrar", type="primary")
                 
                 if submitted:
                     try:
-                        # ⚠️ CORREÇÃO: Busca por "name" OU "username" (caso seja admin)
-                        # Isso garante que se digitar "admin" (username) ou "Administrador" (nome), ambos funcionam
+                        # Busca por nome ou username
                         res = supabase.table('users').select("*").or_(f"name.eq.{nome_login},username.eq.{nome_login}").eq('password', pwd).execute()
                         
                         if res.data:
@@ -167,7 +165,6 @@ if not st.session_state['logged_in']:
                             if data.get('approved'):
                                 st.session_state['logged_in'] = True
                                 
-                                # Lógica Admin
                                 email_db = data.get('username')
                                 if email_db == 'admin' or nome_login.lower() == 'admin':
                                     st.session_state['user_role'] = 'admin'
@@ -176,13 +173,31 @@ if not st.session_state['logged_in']:
                                 
                                 st.session_state['user_name'] = data.get('name')
                                 st.session_state['user_login'] = email_db
+                                
+                                # =======================================================
+                                # REGISTRO AUTOMÁTICO DE LOGIN NO HISTÓRICO
+                                # =======================================================
+                                try:
+                                    supabase.table("arc_flash_history").insert({
+                                        "username": email_db,
+                                        "tag_equipamento": "🟢 LOGIN NO SISTEMA",
+                                        "tensao_kv": 0,
+                                        "corrente_ka": 0,
+                                        "tempo_s": 0,
+                                        "distancia_mm": 0,
+                                        "energia_cal": 0
+                                    }).execute()
+                                except:
+                                    pass # Se der erro no log, não impede o login
+                                # =======================================================
+                                
                                 st.rerun()
                             else:
                                 st.warning("🚫 Usuário pendente de aprovação.")
                         else:
                             st.error("Nome ou senha incorretos.")
                     except Exception as e:
-                        st.error(f"Erro de conexão (ou dados inválidos): {e}")
+                        st.error(f"Erro de conexão: {e}")
         
         else: # Criar Conta
             with st.form("cadastro_form"):
