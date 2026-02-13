@@ -157,14 +157,13 @@ if not st.session_state['logged_in']:
                 
                 if submitted:
                     try:
-                        # Busca por nome ou username
                         res = supabase.table('users').select("*").or_(f"name.eq.{nome_login},username.eq.{nome_login}").eq('password', pwd).execute()
                         
                         if res.data:
                             data = res.data[0]
                             if data.get('approved'):
-                                st.session_state['logged_in'] = True
                                 
+                                # Configura Sessão
                                 email_db = data.get('username')
                                 if email_db == 'admin' or nome_login.lower() == 'admin':
                                     st.session_state['user_role'] = 'admin'
@@ -173,23 +172,26 @@ if not st.session_state['logged_in']:
                                 
                                 st.session_state['user_name'] = data.get('name')
                                 st.session_state['user_login'] = email_db
+                                st.session_state['logged_in'] = True
                                 
                                 # =======================================================
-                                # REGISTRO AUTOMÁTICO DE LOGIN NO HISTÓRICO
+                                # REGISTRO AUTOMÁTICO DE LOGIN NO HISTÓRICO (CORRIGIDO)
                                 # =======================================================
                                 try:
+                                    # Usando 0.0 (float) para garantir que o banco aceite
                                     supabase.table("arc_flash_history").insert({
                                         "username": email_db,
-                                        "tag_equipamento": "🟢 LOGIN NO SISTEMA",
-                                        "tensao_kv": 0,
-                                        "corrente_ka": 0,
-                                        "tempo_s": 0,
-                                        "distancia_mm": 0,
-                                        "energia_cal": 0
+                                        "tag_equipamento": "🟢 LOGIN DO SISTEMA",
+                                        "tensao_kv": 0.0,
+                                        "corrente_ka": 0.0,
+                                        "tempo_s": 0.0,
+                                        "distancia_mm": 0.0,
+                                        "energia_cal": 0.0
                                     }).execute()
-                                except:
-                                    pass # Se der erro no log, não impede o login
-                                # =======================================================
+                                except Exception as log_err:
+                                    # Se falhar o log, mostra erro mas permite entrar (para debug)
+                                    st.error(f"Erro ao registrar log de entrada: {log_err}")
+                                    st.stop() # Para aqui para você ver o erro, se houver.
                                 
                                 st.rerun()
                             else:
@@ -211,7 +213,6 @@ if not st.session_state['logged_in']:
                 if reg_btn:
                     if new_email and new_name and new_pass:
                         try:
-                            # Verifica duplicidade
                             check = supabase.table('users').select("*").eq('username', new_email).execute()
                             if check.data:
                                 st.error("Este e-mail já está cadastrado.")
@@ -444,8 +445,15 @@ if isAdmin and tab3:
                     'energia_cal': 'Energia', 'tensao_kv': 'kV', 'corrente_ka': 'kA'
                 }
                 df.rename(columns=cols_map, inplace=True)
+                # Correção de Fuso Horário (UTC -> SP)
                 if 'Data/Hora' in df.columns:
-                    df['Data/Hora'] = pd.to_datetime(df['Data/Hora']).dt.strftime('%d/%m/%Y %H:%M')
+                    df['Data/Hora'] = pd.to_datetime(df['Data/Hora'])
+                    # Se não tiver fuso, assume UTC e converte
+                    if df['Data/Hora'].dt.tz is None:
+                        df['Data/Hora'] = df['Data/Hora'].dt.tz_localize('UTC')
+                    
+                    df['Data/Hora'] = df['Data/Hora'].dt.tz_convert('America/Sao_Paulo').dt.strftime('%d/%m/%Y %H:%M')
+                    
                 final_cols = [c for c in cols_map.values() if c in df.columns]
                 st.dataframe(df[final_cols], use_container_width=True, hide_index=True)
             else:
