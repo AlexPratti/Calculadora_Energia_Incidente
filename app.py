@@ -194,3 +194,27 @@ else:
                 st.info("Nenhum registro encontrado.")
         except Exception as e:
             st.warning(f"Erro ao ler banco de dados: {e}")
+
+# --- ÁREA DE DEBUG (Pode apagar depois) ---
+st.divider()
+st.subheader("🛠️ Diagnóstico do Supabase")
+
+if st.button("Testar Conexão com Tabela calculations"):
+    try:
+        # 1. Tenta buscar tudo sem filtros para ver se a conexão existe
+        response = supabase.table("calculations").select("*").execute()
+        
+        st.write("📦 Resposta bruta do Supabase:", response)
+        
+        # Verifica se retornou dados
+        if hasattr(response, 'data'):
+            if len(response.data) > 0:
+                st.success(f"Sucesso! Encontrei {len(response.data)} registros.")
+                st.dataframe(response.data)
+            else:
+                st.warning("Conexão funcionou, mas a tabela está vazia ou o RLS está bloqueando a leitura.")
+        else:
+            st.error("O objeto de resposta não tem o atributo 'data'.")
+            
+    except Exception as e:
+        st.error(f"❌ Erro ao conectar: {e}")
