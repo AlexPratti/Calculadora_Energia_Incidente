@@ -135,7 +135,7 @@ def gerar_word(dados):
     return buffer
 
 # ==============================================================================
-# 3. LÓGICA DE LOGIN (CADASTRO REFORMULADO)
+# 3. LÓGICA DE LOGIN / CADASTRO
 # ==============================================================================
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
@@ -150,20 +150,19 @@ if not st.session_state['logged_in']:
         
         if modo == "Entrar":
             with st.form("login_form"):
-                email = st.text_input("E-mail") # Mapeado para 'username' no banco
+                email = st.text_input("E-mail") 
                 pwd = st.text_input("Senha", type="password")
                 submitted = st.form_submit_button("Entrar", type="primary")
                 
                 if submitted:
                     try:
-                        # Busca pelo email na coluna username
                         res = supabase.table('users').select("*").eq('username', email).eq('password', pwd).execute()
                         if res.data:
                             data = res.data[0]
                             if data.get('approved'):
                                 st.session_state['logged_in'] = True
                                 
-                                # Verifica se é admin (Pelo email 'admin' ou outro critério)
+                                # Verifica admin
                                 if email == 'admin' or email == 'admin@weg.net': # Exemplo
                                     st.session_state['user_role'] = 'admin'
                                 else:
@@ -182,9 +181,11 @@ if not st.session_state['logged_in']:
         else: # Criar Conta
             with st.form("cadastro_form"):
                 st.markdown("### Novo Cadastro")
+                # CAMPOS EXATAMENTE COMO SOLICITADO
                 new_name = st.text_input("Nome")
                 new_email = st.text_input("E-mail")
                 new_pass = st.text_input("Defina sua Senha", type="password")
+                
                 reg_btn = st.form_submit_button("Solicitar Acesso")
                 
                 if reg_btn:
@@ -195,10 +196,9 @@ if not st.session_state['logged_in']:
                             if check.data:
                                 st.error("Este e-mail já está cadastrado.")
                             else:
-                                # Salva E-mail no campo username para manter compatibilidade
                                 payload = {
-                                    "username": new_email,
-                                    "name": new_name,
+                                    "username": new_email, # Salva email no username
+                                    "name": new_name,      # Salva nome no name
                                     "password": new_pass,
                                     "approved": False
                                 }
@@ -207,14 +207,13 @@ if not st.session_state['logged_in']:
                         except Exception as e:
                             st.error(f"Erro ao cadastrar: {e}")
                     else:
-                        st.warning("Preencha Nome, E-mail e Senha.")
+                        st.warning("Preencha todos os campos.")
     st.stop()
 
 # ==============================================================================
 # 4. APP PRINCIPAL (SÓ EXECUTA SE LOGADO)
 # ==============================================================================
 
-# --- SIDEBAR: GESTÃO E SAIR ---
 st.sidebar.success(f"Olá, {st.session_state['user_name']}")
 
 # 4.1 Troca de Senha
@@ -244,10 +243,8 @@ if isAdmin:
         pendentes = supabase.table('users').select("*").eq('approved', False).execute()
         if pendentes.data:
             st.sidebar.warning(f"Pendentes: {len(pendentes.data)}")
-            # Mostra Nome (Email) para facilitar
+            # Mostra Nome (Email)
             lista_pend = {f"{u['name']} ({u['username']})": u['username'] for u in pendentes.data}
-            
-            # Selectbox retorna a chave (string visivel), pegamos o valor (email) depois
             sel_display = st.sidebar.selectbox("Aprovar:", list(lista_pend.keys()))
             sel_email = lista_pend[sel_display]
             
@@ -260,21 +257,18 @@ if isAdmin:
     except: pass
     
     st.sidebar.markdown("---")
-    # Exclusão (Real do Banco de Dados)
+    # Exclusão
     try:
         all_users = supabase.table('users').select("*").neq('username', 'admin').neq('username', st.session_state['user_login']).execute()
         if all_users.data:
-            # Cria lista legível: "Nome (email)"
             users_map = {f"{u['name']} ({u['username']})": u['username'] for u in all_users.data}
-            
             user_display = st.sidebar.selectbox("Excluir Usuário:", ["..."] + list(users_map.keys()))
             
             if user_display != "...":
                 email_to_delete = users_map[user_display]
                 if st.sidebar.button(f"🗑️ Excluir Definitivamente"):
-                    # Deleta do banco
                     supabase.table('users').delete().eq('username', email_to_delete).execute()
-                    st.sidebar.success("Usuário excluído do banco de dados.")
+                    st.sidebar.success("Usuário excluído.")
                     st.rerun()
     except: pass
 
@@ -290,7 +284,7 @@ if 'corrente_stored' not in st.session_state: st.session_state['corrente_stored'
 if 'resultado_icc_detalhe' not in st.session_state: st.session_state['resultado_icc_detalhe'] = None
 if 'ultimo_calculo' not in st.session_state: st.session_state['ultimo_calculo'] = None
 
-# CRIAÇÃO DAS ABAS
+# ABAS
 if isAdmin:
     tab1, tab2, tab3 = st.tabs(["🔥 Energia Incidente", "🧮 Icc (Curto)", "📂 Histórico (Admin)"])
 else:
@@ -318,7 +312,6 @@ with tab1:
     with c4: gap = st.number_input("Gap (mm)", value=0.0, step=1.0)
     with c5: distancia = st.number_input("Distância (mm)", value=0.0, step=10.0)
 
-    # Cálculo
     def calcular_completo():
         g_c = gap if gap > 0 else (152.0 if tensao >= 1.0 else 25.0)
         d_c = distancia if distancia > 0 else (914.0 if tensao >= 1.0 else 457.2)
