@@ -151,8 +151,8 @@ if not st.session_state['logged_in']:
         
         if modo == "Entrar":
             with st.form("login_form"):
-                nome_login = st.text_input("Nome", key="input_nome_login_v2") 
-                pwd = st.text_input("Senha", type="password", key="input_pwd_login_v2")
+                nome_login = st.text_input("Nome", key="input_nome_login_final_v3") 
+                pwd = st.text_input("Senha", type="password", key="input_pwd_login_final_v3")
                 submitted = st.form_submit_button("Entrar", type="primary")
                 
                 if submitted:
@@ -161,20 +161,19 @@ if not st.session_state['logged_in']:
                         
                         if res.data:
                             data = res.data[0]
-                            # 1. Verifica se está aprovado (Ativo/Bloqueado)
+                            # Verifica aprovação
                             if data.get('approved'):
                                 
-                                # 2. VERIFICAÇÃO DE CONTRATO (VALIDADE)
+                                # Verifica Contrato (Data)
                                 exp_str = data.get('expiration_date')
                                 contrato_valido = True
                                 
                                 if exp_str:
                                     try:
-                                        # Converte string do banco para data
                                         validade = datetime.strptime(exp_str, '%Y-%m-%d').date()
                                         if date.today() > validade:
                                             contrato_valido = False
-                                    except: pass # Se data inválida, ignora e libera (ou bloqueia, depende da regra)
+                                    except: pass
 
                                 if contrato_valido:
                                     st.session_state['logged_in'] = True
@@ -188,7 +187,7 @@ if not st.session_state['logged_in']:
                                     st.session_state['user_name'] = data.get('name')
                                     st.session_state['user_login'] = email_db
                                     
-                                    # LOG AUTOMÁTICO
+                                    # LOG AUTOMÁTICO DE LOGIN
                                     try:
                                         supabase.table("arc_flash_history").insert({
                                             "username": email_db,
@@ -203,9 +202,9 @@ if not st.session_state['logged_in']:
                                     
                                     st.rerun()
                                 else:
-                                    st.error(f"⛔ Seu contrato de licença expirou em {validade.strftime('%d/%m/%Y')}. Contate o administrador.")
+                                    st.error(f"⛔ Contrato expirado em {validade.strftime('%d/%m/%Y')}.")
                             else:
-                                st.warning("🚫 Usuário pendente de aprovação ou bloqueado pelo Administrador.")
+                                st.warning("🚫 Usuário pendente de aprovação ou bloqueado.")
                         else:
                             st.error("Nome ou senha incorretos.")
                     except Exception as e:
@@ -232,7 +231,6 @@ if not st.session_state['logged_in']:
                                     "name": new_name,
                                     "password": new_pass,
                                     "approved": False
-                                    # expiration_date será setado quando o Admin aprovar
                                 }
                                 supabase.table('users').insert(payload).execute()
                                 st.success("✅ Cadastro realizado! Aguarde aprovação.")
@@ -270,78 +268,61 @@ if isAdmin:
     st.sidebar.markdown("---")
     st.sidebar.subheader("🛡️ Admin Panel")
     
-    # -----------------------------------------------
-    # APROVAÇÃO E RENOVAÇÃO DE LICENÇA (1 ANO)
-    # -----------------------------------------------
+    # Aprovação / Renovação
     try:
-        # Busca aprovados=False (pendentes ou bloqueados)
         pendentes = supabase.table('users').select("*").eq('approved', False).execute()
         if pendentes.data:
-            st.sidebar.warning(f"Pendentes/Bloqueados: {len(pendentes.data)}")
-            
+            st.sidebar.warning(f"Pendentes: {len(pendentes.data)}")
             lista_pend = {f"{u['name']} ({u['username']})": u['username'] for u in pendentes.data}
-            sel_display = st.sidebar.selectbox("Liberar/Renovar:", list(lista_pend.keys()))
+            sel_display = st.sidebar.selectbox("Liberar:", list(lista_pend.keys()))
             sel_email = lista_pend[sel_display]
             
             if st.sidebar.button(f"✅ Liberar + 1 Ano"):
-                # Calcula expiração: Hoje + 365 dias
                 validade_nova = (datetime.now() + timedelta(days=365)).strftime('%Y-%m-%d')
-                
                 supabase.table('users').update({
                     'approved': True,
                     'expiration_date': validade_nova
                 }).eq('username', sel_email).execute()
-                
-                st.sidebar.success(f"Acesso liberado até {datetime.strptime(validade_nova, '%Y-%m-%d').strftime('%d/%m/%Y')}!")
+                st.sidebar.success(f"Liberado até {datetime.strptime(validade_nova, '%Y-%m-%d').strftime('%d/%m/%Y')}")
                 st.rerun()
         else:
-            st.sidebar.info("Sem aprovações pendentes.")
-    except Exception as e:
-        st.sidebar.error(f"Erro ao carregar pendentes. Verifique se criou a coluna expiration_date.")
+            st.sidebar.info("Sem pendências.")
+    except: pass
     
     st.sidebar.markdown("---")
     
-    # -----------------------------------------------
-    # BLOQUEIO DE USUÁRIO (SEM EXCLUIR)
-    # -----------------------------------------------
+    # Bloqueio
     try:
-        # Busca usuários ativos (approved=True) exceto admin e o próprio
         active_users = supabase.table('users').select("*").eq('approved', True).neq('username', 'admin').neq('username', st.session_state['user_login']).execute()
-        
         if active_users.data:
             lista_ativos = {f"{u['name']} ({u['username']})": u['username'] for u in active_users.data}
-            
-            user_block_display = st.sidebar.selectbox("Bloquear Acesso:", ["..."] + list(lista_ativos.keys()))
-            
-            if user_block_display != "...":
-                email_block = lista_ativos[user_block_display]
-                if st.sidebar.button(f"🚫 Bloquear {email_block}"):
-                    supabase.table('users').update({'approved': False}).eq('username', email_block).execute()
-                    st.sidebar.warning(f"Usuário {email_block} foi bloqueado.")
+            user_block = st.sidebar.selectbox("Bloquear:", ["..."] + list(lista_ativos.keys()))
+            if user_block != "...":
+                email_blk = lista_ativos[user_block]
+                if st.sidebar.button(f"🚫 Bloquear"):
+                    supabase.table('users').update({'approved': False}).eq('username', email_blk).execute()
+                    st.sidebar.warning("Bloqueado.")
                     st.rerun()
     except: pass
 
     st.sidebar.markdown("---")
     
-    # -----------------------------------------------
-    # EXCLUSÃO DEFINITIVA
-    # -----------------------------------------------
+    # Exclusão Completa
     try:
         all_users = supabase.table('users').select("*").neq('username', 'admin').neq('username', st.session_state['user_login']).execute()
         if all_users.data:
             users_map = {f"{u['name']} ({u['username']})": u['username'] for u in all_users.data}
-            user_del_display = st.sidebar.selectbox("Excluir Definitivamente:", ["..."] + list(users_map.keys()))
-            
-            if user_del_display != "...":
-                email_del = users_map[user_del_display]
-                if st.sidebar.button(f"🗑️ Confirmar Exclusão"):
+            user_del = st.sidebar.selectbox("Excluir:", ["..."] + list(users_map.keys()))
+            if user_del != "...":
+                email_del = users_map[user_del]
+                if st.sidebar.button(f"🗑️ Excluir Definitivo"):
                     try:
+                        # Deleta histórico e usuário
                         supabase.table('arc_flash_history').delete().eq('username', email_del).execute()
                         supabase.table('users').delete().eq('username', email_del).execute()
-                        st.sidebar.success("Usuário e histórico excluídos.")
+                        st.sidebar.success("Excluído.")
                         st.rerun()
-                    except:
-                        st.sidebar.error("Erro na exclusão.")
+                    except: st.sidebar.error("Erro.")
     except: pass
 
 st.sidebar.markdown("---")
@@ -416,9 +397,28 @@ with tab1:
             'e': e_final, 'cat': cat, 'cor': cor
         }
 
+    # BOTÃO CALCULAR COM GRAVAÇÃO AUTOMÁTICA
     if st.button("CALCULAR", type="primary", use_container_width=True):
         if tensao > 0 and corrente > 0:
-            st.session_state['ultimo_calculo'] = calcular_completo()
+            res = calcular_completo()
+            st.session_state['ultimo_calculo'] = res
+            
+            # --- GRAVAÇÃO AUTOMÁTICA ---
+            try:
+                payload = {
+                    "username": st.session_state['user_login'],
+                    "tag_equipamento": res['eq1'] if res['eq1'] else "Sem Tag",
+                    "tensao_kv": res['v'],
+                    "corrente_ka": res['i'],
+                    "tempo_s": res['t'],
+                    "distancia_mm": res['d'],
+                    "energia_cal": float(f"{res['e']:.2f}")
+                }
+                supabase.table("arc_flash_history").insert(payload).execute()
+                st.toast("✅ Cálculo realizado e salvo automaticamente!", icon="💾")
+            except Exception as e:
+                st.error(f"Erro ao salvar: {e}")
+            # ---------------------------
         else:
             st.warning("Preencha os dados.")
 
@@ -431,25 +431,13 @@ with tab1:
         cr2.markdown(f"<div style='background-color:{res['cor']};color:white;padding:15px;text-align:center;border-radius:10px;'><h3>{res['cat']}</h3></div>", unsafe_allow_html=True)
         
         st.divider()
-        st.caption("Ações:")
+        st.caption("Downloads:")
         
-        cb1, cb2, cb3 = st.columns(3)
+        # Apenas Botões de Download (Gravação já foi feita)
+        cb1, cb2 = st.columns(2)
         with cb1:
-            if st.button("💾 Gravar no Banco de Dados", use_container_width=True):
-                try:
-                    payload = {
-                        "username": st.session_state['user_login'],
-                        "tag_equipamento": res['eq1'] if res['eq1'] else "Sem Tag",
-                        "tensao_kv": res['v'], "corrente_ka": res['i'], "tempo_s": res['t'], "distancia_mm": res['d'],
-                        "energia_cal": float(f"{res['e']:.2f}")
-                    }
-                    supabase.table("arc_flash_history").insert(payload).execute()
-                    st.toast("✅ Salvo com sucesso!", icon="💾")
-                except Exception as e:
-                    st.error(f"Erro: {e}")
-        with cb2:
             st.download_button("📥 Baixar PDF", data=gerar_pdf(res), file_name="memorial.pdf", mime="application/pdf", use_container_width=True)
-        with cb3:
+        with cb2:
             st.download_button("📝 Baixar Word", data=gerar_word(res), file_name="memorial.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
 
 # === ABA 2: ICC ===
