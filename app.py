@@ -14,15 +14,17 @@ from datetime import datetime, timedelta, date
 # ==============================================================================
 st.set_page_config(page_title="Cálculo de Energia Incidente", page_icon="⚡", layout="wide")
 
-# 👇 CREDENCIAIS
+# 👇 CREDENCIAIS (Idealmente usar st.secrets em produção)
 SUPABASE_URL = "https://lfgqxphittdatzknwkqw.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmZ3F4cGhpdHRkYXR6a253a3F3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NzYyNzUsImV4cCI6MjA4NjQ1MjI3NX0.fZSfStTC5GdnP0Md1O0ptq8dD84zV-8cgirqIQTNO4Y"
 
 @st.cache_resource
 def init_supabase():
     try:
+        # Tenta pegar dos secrets do Streamlit Cloud primeiro
         return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
     except:
+        # Fallback para as credenciais hardcoded (apenas para teste local)
         return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 try:
@@ -32,9 +34,10 @@ except Exception as e:
     st.stop()
 
 # ==============================================================================
-# 2. FUNÇÕES AUXILIARES
+# 2. FUNÇÕES AUXILIARES (PDF, WORD, FORMATAÇÃO)
 # ==============================================================================
 def ft(texto):
+    """Corrige codificação para PDF (latin-1)"""
     try:
         if texto is None: return ""
         return str(texto).encode('latin-1', 'replace').decode('latin-1')
@@ -135,7 +138,7 @@ def gerar_word(dados):
     return buffer
 
 # ==============================================================================
-# 3. LÓGICA DE LOGIN / CADASTRO
+# 3. LÓGICA DE LOGIN / CADASTRO (ATUALIZADA)
 # ==============================================================================
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
@@ -149,22 +152,30 @@ if not st.session_state['logged_in']:
         st.title("🔒 Sistema Arc Flash")
         modo = st.radio("Acesso:", ["Entrar", "Criar Conta"], horizontal=True)
         
+        # --- LOGIN ---
         if modo == "Entrar":
             with st.form("login_form"):
-                nome_login = st.text_input("Nome", key="input_nome_login_v4") 
-                pwd = st.text_input("Senha", type="password", key="input_pwd_login_v4")
+                # ALTERADO: Label e lógica para E-mail ou 'admin'
+                login_input = st.text_input("E-mail (ou 'admin')", key="input_email_login_v5", placeholder="exemplo@weg.net") 
+                pwd = st.text_input("Senha", type="password", key="input_pwd_login_v5")
                 submitted = st.form_submit_button("Entrar", type="primary")
                 
                 if submitted:
+                    # Normaliza input (remove espaços)
+                    login_clean = login_input.strip()
+                    
                     try:
-                        res = supabase.table('users').select("*").or_(f"name.eq.{nome_login},username.eq.{nome_login}").eq('password', pwd).execute()
+                        # ALTERADO: Busca estritamente pelo campo 'username' (que é o email ou 'admin')
+                        # Não buscamos mais pelo 'name' para evitar confusão.
+                        res = supabase.table('users').select("*").eq('username', login_clean).eq('password', pwd).execute()
                         
                         if res.data:
                             data = res.data[0]
-                            # Verifica aprovação
+                            
+                            # Verifica aprovação do admin
                             if data.get('approved'):
                                 
-                                # Verifica Contrato (Data)
+                                # Verifica validade do contrato
                                 exp_str = data.get('expiration_date')
                                 contrato_valido = True
                                 
@@ -178,7 +189,9 @@ if not st.session_state['logged_in']:
                                     st.session_state['logged_in'] = True
                                     
                                     email_db = data.get('username')
-                                    if email_db == 'admin' or nome_login.lower() == 'admin':
+                                    
+                                    # Define papel (Role)
+                                    if email_db == 'admin':
                                         st.session_state['user_role'] = 'admin'
                                     else:
                                         st.session_state['user_role'] = 'user'
@@ -205,19 +218,19 @@ if not st.session_state['logged_in']:
                             else:
                                 st.warning("🚫 Usuário pendente de aprovação ou bloqueado.")
                         else:
-                            st.error("Nome ou senha incorretos.")
+                            st.error("E-mail ou senha incorretos.")
                     except Exception as e:
                         st.error(f"Erro de conexão: {e}")
         
-        else: # Criar Conta
+        # --- CADASTRO ---
+        else: 
             with st.form("cadastro_form"):
                 st.markdown("### Novo Cadastro")
-                new_name = st.text_input("Nome")
+                new_name = st.text_input("Nome Completo")
                 
-                # --- CAMPO E-MAIL COM AVISO ---
+                # Campo E-mail com aviso
                 new_email = st.text_input("E-mail")
                 st.caption("⚠️ **Importante:** Verifique se o e-mail está correto. O administrador entrará em contato através dele para validar seu cadastro antes da liberação.")
-                # ------------------------------
                 
                 new_pass = st.text_input("Defina sua Senha", type="password")
                 reg_btn = st.form_submit_button("Solicitar Acesso")
@@ -225,12 +238,14 @@ if not st.session_state['logged_in']:
                 if reg_btn:
                     if new_email and new_name and new_pass:
                         try:
-                            check = supabase.table('users').select("*").eq('username', new_email).execute()
+                            # Verifica se e-mail já existe
+                            clean_email = new_email.strip()
+                            check = supabase.table('users').select("*").eq('username', clean_email).execute()
                             if check.data:
                                 st.error("Este e-mail já está cadastrado.")
                             else:
                                 payload = {
-                                    "username": new_email, 
+                                    "username": clean_email, 
                                     "name": new_name,
                                     "password": new_pass,
                                     "approved": False
@@ -244,7 +259,7 @@ if not st.session_state['logged_in']:
     st.stop()
 
 # ==============================================================================
-# 4. APP PRINCIPAL
+# 4. APP PRINCIPAL (SÓ CARREGA SE LOGADO)
 # ==============================================================================
 
 st.sidebar.success(f"Olá, {st.session_state['user_name']}")
@@ -276,6 +291,7 @@ if isAdmin:
         pendentes = supabase.table('users').select("*").eq('approved', False).execute()
         if pendentes.data:
             st.sidebar.warning(f"Pendentes: {len(pendentes.data)}")
+            # Mostra Nome (email) para facilitar identificação
             lista_pend = {f"{u['name']} ({u['username']})": u['username'] for u in pendentes.data}
             sel_display = st.sidebar.selectbox("Liberar:", list(lista_pend.keys()))
             sel_email = lista_pend[sel_display]
@@ -320,11 +336,12 @@ if isAdmin:
                 email_del = users_map[user_del]
                 if st.sidebar.button(f"🗑️ Excluir Definitivo"):
                     try:
+                        # Remove histórico primeiro (constraints) e depois o usuário
                         supabase.table('arc_flash_history').delete().eq('username', email_del).execute()
                         supabase.table('users').delete().eq('username', email_del).execute()
                         st.sidebar.success("Excluído.")
                         st.rerun()
-                    except: st.sidebar.error("Erro.")
+                    except: st.sidebar.error("Erro ao excluir.")
     except: pass
 
 st.sidebar.markdown("---")
@@ -339,10 +356,12 @@ if 'corrente_stored' not in st.session_state: st.session_state['corrente_stored'
 if 'resultado_icc_detalhe' not in st.session_state: st.session_state['resultado_icc_detalhe'] = None
 if 'ultimo_calculo' not in st.session_state: st.session_state['ultimo_calculo'] = None
 
-# ABAS
+# CONFIGURAÇÃO DAS ABAS
 if isAdmin:
+    # 4 Abas para Admin (Incluindo a nova aba de Usuários)
     tab1, tab2, tab3, tab4 = st.tabs(["🔥 Energia Incidente", "🧮 Icc (Curto)", "👥 Usuários (Admin)", "📂 Logs de Atividades"])
 else:
+    # 2 Abas para usuário comum
     tab1, tab2 = st.tabs(["🔥 Energia Incidente", "🧮 Icc (Curto)"])
     tab3, tab4 = None, None
 
@@ -474,7 +493,7 @@ with tab2:
 if isAdmin and tab3:
     with tab3:
         st.header("👥 Base de Usuários Cadastrados")
-        if st.button("🔄 Atualizar Usuários"):
+        if st.button("🔄 Atualizar Lista"):
             st.rerun()
         try:
             # Busca usuários diretos da tabela 'users' (sem repetição)
@@ -491,7 +510,7 @@ if isAdmin and tab3:
                 if 'expiration_date' not in df_u.columns:
                     df_u['expiration_date'] = '-'
                 
-                # Seleção e Renomeação
+                # Seleção e Renomeação para exibição
                 cols_map_u = {
                     'name': 'Nome',
                     'username': 'E-mail',
@@ -501,7 +520,7 @@ if isAdmin and tab3:
                 }
                 df_u.rename(columns=cols_map_u, inplace=True)
                 
-                # Filtra apenas colunas existentes
+                # Filtra apenas colunas existentes para não dar erro
                 final_cols_u = [c for c in cols_map_u.values() if c in df_u.columns]
                 
                 st.dataframe(df_u[final_cols_u], use_container_width=True, hide_index=True)
