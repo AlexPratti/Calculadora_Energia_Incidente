@@ -8,30 +8,29 @@ from datetime import datetime
 # 1. CONFIGURAÇÃO DA PÁGINA
 # ==============================================================================
 st.set_page_config(
-    page_title="VERSÃO NOVA - COM HISTÓRICO",
+    page_title="Calculadora de Energia WEG",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # ==============================================================================
-# 2. CONEXÃO SUPABASE
+# 2. CONEXÃO SUPABASE (JÁ PREENCHIDO)
 # ==============================================================================
-# 👇 PREENCHA AQUI COM SEUS DADOS REAIS 👇
 SUPABASE_URL = "https://lfgqxphittdatzknwkqw.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmZ3F4cGhpdHRkYXR6a253a3F3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NzYyNzUsImV4cCI6MjA4NjQ1MjI3NX0.fZSfStTC5GdnP0Md1O0ptq8dD84zV-8cgirqIQTNO4Y"
 
 @st.cache_resource
 def init_supabase():
     try:
-        # Tenta pegar dos secrets (se houver), senão usa as variáveis acima
+        # Tenta pegar dos secrets primeiro, se falhar usa as variaveis acima
         return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
     except:
         return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 try:
     supabase = init_supabase()
-except:
-    st.error("Erro de conexão com Supabase. Verifique URL e KEY no código.")
+except Exception as e:
+    st.error(f"Erro de conexão com Supabase: {e}")
     st.stop()
 
 # ==============================================================================
@@ -41,8 +40,9 @@ st.markdown("""
 <style>
     .stButton>button { width: 100%; border-radius: 4px; font-weight: bold; }
     div[data-testid="stButton"] > button[kind="primary"] {
-        background-color: #ff4b4b; color: white; border: none;
+        background-color: #0091BD; color: white; border: none; /* Azul WEG */
     }
+    .big-font { font-size: 20px !important; font-weight: bold; color: #333; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -57,7 +57,8 @@ if 'username' not in st.session_state:
 def login_screen():
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("## 🔐 Login Nova Versão")
+        st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/e/e3/WEG_logo.svg/2560px-WEG_logo.svg.png", width=150)
+        st.markdown("### 🔐 Acesso ao Sistema")
         with st.form("login"):
             user = st.text_input("Usuário")
             pwd = st.text_input("Senha", type="password")
@@ -65,6 +66,7 @@ def login_screen():
             
         if btn:
             try:
+                # Busca usuário no banco
                 res = supabase.table('users').select("*").eq('username', user).eq('password', pwd).execute()
                 if res.data:
                     data = res.data[0]
@@ -76,9 +78,9 @@ def login_screen():
                     else:
                         st.warning("Usuário pendente de aprovação.")
                 else:
-                    st.error("Dados incorretos.")
+                    st.error("Usuário ou senha incorretos.")
             except Exception as e:
-                st.error(f"Erro: {e}")
+                st.error(f"Erro no login: {e}")
 
 # ==============================================================================
 # 5. APP PRINCIPAL
@@ -86,135 +88,121 @@ def login_screen():
 if not st.session_state['logged_in']:
     login_screen()
 else:
-    # --- SIDEBAR SIMPLIFICADA ---
+    # --- SIDEBAR ---
     with st.sidebar:
-        st.success(f"Logado como: {st.session_state.get('name')}")
-        if st.button("Sair do Sistema"):
+        st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/e/e3/WEG_logo.svg/2560px-WEG_logo.svg.png", width=100)
+        st.success(f"👤 Olá, {st.session_state.get('name')}")
+        if st.button("Sair"):
             st.session_state['logged_in'] = False
             st.rerun()
             
-    # --- SISTEMA DE ABAS (ISSO TEM QUE APARECER) ---
-    st.title("⚡ Calculadora WEG & Histórico")
-    tab_calc, tab_hist = st.tabs(["🧮 Simulação", "📂 Ver Histórico"])
+    # --- CABEÇALHO ---
+    st.title("⚡ Calculadora de Custo de Energia")
+    
+    # Abas
+    tab_calc, tab_hist = st.tabs(["🧮 Calcular", "📂 Histórico Salvo"])
 
     # --------------------------------------------------------------------------
-    # ABA 1: CALCULADORA
+    # ABA 1: CALCULADORA (Adaptada para a tabela 'calculations')
     # --------------------------------------------------------------------------
     with tab_calc:
-        c_eq1, c_eq2 = st.columns(2)
-        equipamento = c_eq1.text_input("Equipamento", "QGBT Geral")
-        detalhe = c_eq2.text_input("Detalhe", "Disjuntor de Entrada")
-
-        st.info("Parâmetros do Arco:")
-        c1, c2, c3 = st.columns(3)
-        tensao = c1.number_input("Tensão (kV)", value=13.8, format="%.3f")
-        corrente = c2.number_input("Corrente (kA)", value=17.0, format="%.3f")
-        tempo = c3.number_input("Tempo (s)", value=0.5, format="%.4f")
+        st.markdown("Preencha os dados do equipamento para estimar o custo mensal.")
         
-        c4, c5 = st.columns(2)
-        gap = c4.number_input("Gap (mm)", value=32.0)
-        distancia = c5.number_input("Distância (mm)", value=450.0)
+        c1, c2 = st.columns(2)
+        equipamento = c1.text_input("Nome do Equipamento", "Motor WEG W22")
+        
+        # Inputs Numéricos
+        col_a, col_b, col_c, col_d = st.columns(4)
+        potencia = col_a.number_input("Potência (Watts)", min_value=1.0, value=1500.0, step=100.0)
+        horas = col_b.number_input("Horas/Dia", min_value=0.1, max_value=24.0, value=8.0, step=0.5)
+        dias = col_c.number_input("Dias/Mês", min_value=1, max_value=31, value=22)
+        preco = col_d.number_input("Preço kWh (R$)", min_value=0.01, value=0.85, format="%.2f")
 
-        # Botão Calcular
-        if st.button("CALCULAR ENERGIA", type="primary"):
-            # Cálculo Simulado
-            energia = (tensao * corrente * tempo * 0.165) * 8 
-            
-            # Categoria
-            cat_txt = "Cat 3 / 4"
-            cat_color = "red"
-            if energia < 1.2: 
-                cat_txt = "Isento"
-                cat_color = "green"
-            elif energia < 8:
-                cat_txt = "Cat 1 / 2"
-                cat_color = "orange"
-            
-            # Salva no estado
-            st.session_state['resultado'] = {
-                "energia": energia,
-                "cat_txt": cat_txt,
-                "cat_color": cat_color,
-                "equip": equipamento,
-                "det": detalhe,
-                "inputs": [tensao, corrente, tempo, gap, distancia]
-            }
+        st.divider()
 
-        # Exibir Resultados e Botão de Salvar
-        if 'resultado' in st.session_state:
-            res = st.session_state['resultado']
-            
-            st.divider()
-            
-            rc1, rc2 = st.columns([1, 2])
-            with rc1:
-                st.metric("Energia Incidente", f"{res['energia']:.2f} cal/cm²")
-            with rc2:
-                st.markdown(f"<h2 style='color:{res['cat_color']}'>{res['cat_txt']}</h2>", unsafe_allow_html=True)
+        # Botão Calcular e Salvar
+        if st.button("CALCULAR E SALVAR NO HISTÓRICO", type="primary"):
+            if not equipamento:
+                st.warning("Por favor, dê um nome ao equipamento.")
+            else:
+                # 1. Lógica do Cálculo
+                consumo_mensal_kwh = (potencia * horas * dias) / 1000
+                custo_mensal = consumo_mensal_kwh * preco
+                
+                # 2. Exibição
+                col_res1, col_res2 = st.columns(2)
+                col_res1.metric("Consumo Estimado", f"{consumo_mensal_kwh:.2f} kWh/mês")
+                col_res2.metric("Custo Mensal", f"R$ {custo_mensal:.2f}")
 
-            st.divider()
-            
-            # --- O BOTÃO DE SALVAR ---
-            if st.button("💾 GRAVAR NO BANCO DE DADOS"):
+                # 3. Preparação para o Supabase (Mapeamento Exato da Tabela 'calculations')
+                dados_para_salvar = {
+                    "username": st.session_state['username'],  # Coluna: username
+                    "equipment_name": equipamento,             # Coluna: equipment_name
+                    "power_watts": potencia,                   # Coluna: power_watts
+                    "hours_per_day": horas,                    # Coluna: hours_per_day
+                    "days_per_month": dias,                    # Coluna: days_per_month
+                    "kwh_price": preco,                        # Coluna: kwh_price
+                    "monthly_cost": custo_mensal               # Coluna: monthly_cost
+                }
+
+                # 4. Envio ao Banco
                 try:
-                    payload = {
-                        "username": st.session_state['username'],
-                        "equipamento": res['equip'],
-                        "detalhe": res['det'],
-                        "tensao_kv": res['inputs'][0],
-                        "corrente_ka": res['inputs'][1],
-                        "tempo_s": res['inputs'][2],
-                        "gap_mm": res['inputs'][3],
-                        "distancia_mm": res['inputs'][4],
-                        "energia_cal": float(f"{res['energia']:.2f}"),
-                        "categoria": res['cat_txt']
-                    }
-                    supabase.table("arc_flash_history").insert(payload).execute()
-                    st.success("✅ Salvo com sucesso! Verifique na aba 'Ver Histórico'.")
+                    # Inserção
+                    response = supabase.table("calculations").insert(dados_para_salvar).execute()
+                    
+                    # Verificação se deu certo
+                    if response.data:
+                        st.toast("✅ Dados salvos com sucesso!", icon="💾")
+                        st.balloons()
+                    else:
+                        st.error("O banco não retornou confirmação. Verifique se o RLS está desativado.")
+                        
                 except Exception as e:
                     st.error(f"Erro ao salvar: {e}")
 
     # --------------------------------------------------------------------------
-    # ABA 2: HISTÓRICO
+    # ABA 2: HISTÓRICO (Lendo da tabela 'calculations')
     # --------------------------------------------------------------------------
     with tab_hist:
-        st.header("Histórico de Simulações")
-        if st.button("🔄 Atualizar Tabela"):
+        st.header("Histórico de Cálculos")
+        
+        col_btn, _ = st.columns([1,4])
+        if col_btn.button("🔄 Atualizar Lista"):
             st.rerun()
             
         try:
-            response = supabase.table("arc_flash_history").select("*").order("created_at", desc=True).execute()
-            df = pd.DataFrame(response.data)
+            # Busca dados ordenados por data (mais recente primeiro)
+            response = supabase.table("calculations").select("*").order("created_at", desc=True).execute()
             
-            if not df.empty:
-                display_df = df[['created_at', 'username', 'equipamento', 'energia_cal', 'categoria']].copy()
-                display_df.columns = ['Data', 'Usuário', 'Equipamento', 'Energia', 'Cat']
-                st.dataframe(display_df, use_container_width=True)
+            if response.data:
+                df = pd.DataFrame(response.data)
+                
+                # Selecionar e Renomear colunas para ficar bonito na tela
+                # Ajuste conforme as colunas existam no retorno
+                cols_to_show = ['created_at', 'username', 'equipment_name', 'monthly_cost', 'power_watts']
+                
+                # Filtra apenas colunas que realmente vieram do banco para evitar erro
+                cols_existentes = [c for c in cols_to_show if c in df.columns]
+                
+                df_show = df[cols_existentes].copy()
+                
+                # Renomear para português na exibição
+                mapa_nomes = {
+                    'created_at': 'Data/Hora',
+                    'username': 'Usuário',
+                    'equipment_name': 'Equipamento',
+                    'monthly_cost': 'Custo (R$)',
+                    'power_watts': 'Potência (W)'
+                }
+                df_show.rename(columns=mapa_nomes, inplace=True)
+                
+                # Formatar data se existir
+                if 'Data/Hora' in df_show.columns:
+                    df_show['Data/Hora'] = pd.to_datetime(df_show['Data/Hora']).dt.strftime('%d/%m/%Y %H:%M')
+
+                st.dataframe(df_show, use_container_width=True, hide_index=True)
             else:
-                st.info("Nenhum registro encontrado.")
+                st.info("Nenhum cálculo encontrado no histórico ainda.")
+                
         except Exception as e:
-            st.warning(f"Erro ao ler banco de dados: {e}")
-
-# --- ÁREA DE DEBUG (Pode apagar depois) ---
-st.divider()
-st.subheader("🛠️ Diagnóstico do Supabase")
-
-if st.button("Testar Conexão com Tabela calculations"):
-    try:
-        # 1. Tenta buscar tudo sem filtros para ver se a conexão existe
-        response = supabase.table("calculations").select("*").execute()
-        
-        st.write("📦 Resposta bruta do Supabase:", response)
-        
-        # Verifica se retornou dados
-        if hasattr(response, 'data'):
-            if len(response.data) > 0:
-                st.success(f"Sucesso! Encontrei {len(response.data)} registros.")
-                st.dataframe(response.data)
-            else:
-                st.warning("Conexão funcionou, mas a tabela está vazia ou o RLS está bloqueando a leitura.")
-        else:
-            st.error("O objeto de resposta não tem o atributo 'data'.")
-            
-    except Exception as e:
-        st.error(f"❌ Erro ao conectar: {e}")
+            st.error(f"Erro ao carregar histórico: {e}")
