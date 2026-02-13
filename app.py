@@ -151,22 +151,23 @@ if not st.session_state['logged_in']:
         
         if modo == "Entrar":
             with st.form("login_form"):
-                # A chave 'key' força a atualização visual do componente
-                nome_login = st.text_input("Nome", key="input_nome_login_unique") 
-                pwd = st.text_input("Senha", type="password", key="input_pwd_login_unique")
+                # Campo Rotulado como "Nome", mas o código busca também por username
+                nome_login = st.text_input("Nome", key="input_nome_login_fix") 
+                pwd = st.text_input("Senha", type="password", key="input_pwd_login_fix")
                 submitted = st.form_submit_button("Entrar", type="primary")
                 
                 if submitted:
                     try:
-                        # Busca o usuário pelo Nome
-                        res = supabase.table('users').select("*").eq('name', nome_login).eq('password', pwd).execute()
+                        # ⚠️ CORREÇÃO: Busca por "name" OU "username" (caso seja admin)
+                        # Isso garante que se digitar "admin" (username) ou "Administrador" (nome), ambos funcionam
+                        res = supabase.table('users').select("*").or_(f"name.eq.{nome_login},username.eq.{nome_login}").eq('password', pwd).execute()
                         
                         if res.data:
                             data = res.data[0]
                             if data.get('approved'):
                                 st.session_state['logged_in'] = True
                                 
-                                # Verifica admin (Se o nome ou o email for admin)
+                                # Lógica Admin
                                 email_db = data.get('username')
                                 if email_db == 'admin' or nome_login.lower() == 'admin':
                                     st.session_state['user_role'] = 'admin'
@@ -174,14 +175,14 @@ if not st.session_state['logged_in']:
                                     st.session_state['user_role'] = 'user'
                                 
                                 st.session_state['user_name'] = data.get('name')
-                                st.session_state['user_login'] = email_db # Usa email para salvar histórico
+                                st.session_state['user_login'] = email_db
                                 st.rerun()
                             else:
                                 st.warning("🚫 Usuário pendente de aprovação.")
                         else:
                             st.error("Nome ou senha incorretos.")
                     except Exception as e:
-                        st.error(f"Erro de conexão: {e}")
+                        st.error(f"Erro de conexão (ou dados inválidos): {e}")
         
         else: # Criar Conta
             with st.form("cadastro_form"):
@@ -195,6 +196,7 @@ if not st.session_state['logged_in']:
                 if reg_btn:
                     if new_email and new_name and new_pass:
                         try:
+                            # Verifica duplicidade
                             check = supabase.table('users').select("*").eq('username', new_email).execute()
                             if check.data:
                                 st.error("Este e-mail já está cadastrado.")
