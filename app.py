@@ -14,7 +14,7 @@ from datetime import datetime
 # ==============================================================================
 st.set_page_config(page_title="Cálculo de Energia Incidente", page_icon="⚡", layout="wide")
 
-# 👇 CREDENCIAIS DO SUPABASE (JÁ PREENCHIDAS) 👇
+# 👇 CREDENCIAIS (JÁ PREENCHIDAS)
 SUPABASE_URL = "https://lfgqxphittdatzknwkqw.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmZ3F4cGhpdHRkYXR6a253a3F3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NzYyNzUsImV4cCI6MjA4NjQ1MjI3NX0.fZSfStTC5GdnP0Md1O0ptq8dD84zV-8cgirqIQTNO4Y"
 
@@ -142,199 +142,224 @@ def gerar_word(dados):
 
 def main_app_logic():
     st.markdown(f"### ⚡ Cálculo de Arc Flash")
-    st.caption(f"Logado como: {st.session_state['user_name']}")
+    
+    # Header com nome do usuário
+    col_head1, col_head2 = st.columns([6, 1])
+    col_head1.caption(f"Logado como: {st.session_state['user_name']}")
+    if st.session_state['user_role'] == 'admin':
+        col_head2.success("Modo Admin")
     
     if 'corrente_stored' not in st.session_state: st.session_state['corrente_stored'] = 17.0
     if 'resultado_icc_detalhe' not in st.session_state: st.session_state['resultado_icc_detalhe'] = None
     if 'ultimo_calculo' not in st.session_state: st.session_state['ultimo_calculo'] = None
 
-    # --- LAYOUT DE DUAS COLUNAS: [ APP (70%) | HISTÓRICO (30%) ] ---
-    col_app, col_hist = st.columns([7, 3])
-
-    # --------------------------------------------------------
-    # COLUNA DA ESQUERDA: CALCULADORA (Abas originais)
-    # --------------------------------------------------------
-    with col_app:
+    # --- LÓGICA DE ABAS (ADMIN VÊ 3, USER VÊ 2) ---
+    isAdmin = (st.session_state.get('user_role') == 'admin')
+    
+    if isAdmin:
+        tab1, tab2, tab3 = st.tabs(["🔥 Energia Incidente", "🧮 Icc (Curto)", "📂 Histórico (Admin)"])
+    else:
         tab1, tab2 = st.tabs(["🔥 Energia Incidente", "🧮 Icc (Curto)"])
+        tab3 = None # Usuário comum não tem essa variável
 
-        # --- ABA 1: CÁLCULO ARC FLASH ---
-        with tab1:
-            st.subheader("Análise de Energia")
-            with st.container(border=True):
-                st.caption("Identificação")
-                local_input = st.text_input("Local", placeholder="Ex: Sala Elétrica 01")
-                c_eq1, c_eq2 = st.columns(2)
-                with c_eq1: eq1_input = st.text_input("Equipamento", placeholder="Ex: QGBT Geral")
-                with c_eq2: eq2_input = st.text_input("Detalhe", placeholder="Ex: Disjuntor Entrada")
+    # ========================================================
+    # ABA 1: CÁLCULO ARC FLASH
+    # ========================================================
+    with tab1:
+        st.subheader("Análise de Energia")
+        with st.container(border=True):
+            st.caption("Identificação")
+            local_input = st.text_input("Local", placeholder="Ex: Sala Elétrica 01")
+            c_eq1, c_eq2 = st.columns(2)
+            with c_eq1: eq1_input = st.text_input("Equipamento", placeholder="Ex: QGBT Geral")
+            with c_eq2: eq2_input = st.text_input("Detalhe", placeholder="Ex: Disjuntor Entrada")
 
-            st.write("")
-            st.info("Parâmetros do Arco:")
-            c1, c2, c3 = st.columns(3)
-            with c1: tensao = st.number_input("1. Tensão (kV)", value=13.80, format="%.3f")
-            with c2: corrente = st.number_input("2. Corrente (kA)", key="corrente_stored", format="%.3f")
-            with c3: tempo = st.number_input("3. Tempo (s)", value=0.500, format="%.4f")
+        st.write("")
+        st.info("Parâmetros do Arco:")
+        c1, c2, c3 = st.columns(3)
+        with c1: tensao = st.number_input("1. Tensão (kV)", value=13.80, format="%.3f")
+        with c2: corrente = st.number_input("2. Corrente (kA)", key="corrente_stored", format="%.3f")
+        with c3: tempo = st.number_input("3. Tempo (s)", value=0.500, format="%.4f")
 
-            c4, c5 = st.columns(2)
-            with c4: gap = st.number_input("Gap (mm)", value=0.0, step=1.0, help="0 = Padrão Automático")
-            with c5: distancia = st.number_input("Distância (mm)", value=0.0, step=10.0, help="0 = Padrão Automático")
+        c4, c5 = st.columns(2)
+        with c4: gap = st.number_input("Gap (mm)", value=0.0, step=1.0, help="0 = Padrão Automático")
+        with c5: distancia = st.number_input("Distância (mm)", value=0.0, step=10.0, help="0 = Padrão Automático")
 
-            # Função de Cálculo (Lógica Original)
-            def calcular_completo():
-                g_c = gap if gap > 0 else (152.0 if tensao >= 1.0 else 25.0)
-                d_c = distancia if distancia > 0 else (914.0 if tensao >= 1.0 else 457.2)
-                is_gap_std = (gap <= 0)
-                is_dist_std = (distancia <= 0)
-                lg_i = math.log10(corrente) if corrente > 0 else 0
-                
-                if tensao < 1.0:
-                    k_base, k_i, k_g = -0.555, 1.081, 0.0011
-                    x_dist = 2.0
-                    fator_v = 0.85 if tensao < 0.6 else 1.0
-                else:
-                    k_base, k_i, k_g = -0.555, 1.081, 0.0011
-                    x_dist = 2.0
-                    fator_v = 1.15
-
-                lg_en = k_base + (k_i * lg_i) + (k_g * g_c)
-                en_base = 10 ** lg_en
-                fator_t = tempo / 0.2
-                fator_d = (610 / d_c) ** x_dist
-                e_final = 1.0 * en_base * fator_t * fator_d * fator_v
-                
-                if e_final < 1.2: cat, cor = "Risco Mínimo", "green"
-                elif e_final < 4.0: cat, cor = "Cat 1 / 2", "orange"
-                elif e_final < 8.0: cat, cor = "Cat 2", "darkorange"
-                elif e_final < 40.0: cat, cor = "Cat 3 / 4", "red"
-                else: cat, cor = "PERIGO", "black"
-
-                return {
-                    'local': local_input, 'eq1': eq1_input, 'eq2': eq2_input,
-                    'v': tensao, 'i': corrente, 't': tempo, 'g': g_c, 'd': d_c,
-                    'is_gap_std': is_gap_std, 'is_dist_std': is_dist_std,
-                    'k_base': k_base, 'k_i': k_i, 'k_g': k_g,
-                    'lg_en': lg_en, 'en_base': en_base,
-                    'fator_t': fator_t, 'fator_d': fator_d, 'fator_v': fator_v, 'x_dist': x_dist,
-                    'e': e_final, 'cat': cat, 'cor': cor
-                }
-
-            # Botão Calcular
-            if st.button("CALCULAR", type="primary", use_container_width=True):
-                if tensao > 0 and corrente > 0 and tempo > 0:
-                    resultado = calcular_completo()
-                    st.session_state['ultimo_calculo'] = resultado
-                else:
-                    st.warning("Preencha dados obrigatórios.")
-
-            # Resultados
-            if st.session_state['ultimo_calculo']:
-                res = st.session_state['ultimo_calculo']
-                st.divider()
-                st.markdown(f"**Resultado:** {res['local']} - {res['eq1']}")
-                
-                c_res1, c_res2 = st.columns([1, 2])
-                c_res1.metric("Energia Incidente", f"{res['e']:.2f} cal/cm²")
-                c_res2.markdown(f"<div style='background-color:{res['cor']};color:white;padding:15px;text-align:center;border-radius:10px;'><h3>{res['cat']}</h3></div>", unsafe_allow_html=True)
-                
-                st.divider()
-                st.caption("Ações:")
-                
-                # --- BOTÃO DE SALVAR NO SUPABASE (INTEGRAÇÃO NOVA) ---
-                if st.button("💾 Salvar no Histórico"):
-                    try:
-                        payload = {
-                            "username": st.session_state['user_login'],
-                            "tag_equipamento": res['eq1'] if res['eq1'] else "Sem Tag",
-                            "tensao_kv": res['v'],
-                            "corrente_ka": res['i'],
-                            "tempo_s": res['t'],
-                            "distancia_mm": res['d'],
-                            "energia_cal": float(f"{res['e']:.2f}")
-                        }
-                        supabase.table("arc_flash_history").insert(payload).execute()
-                        st.toast("✅ Salvo no banco de dados!", icon="💾")
-                        st.rerun() # Recarrega para atualizar a tabela lateral
-                    except Exception as e:
-                        st.error(f"Erro ao salvar: {e}")
-
-                # Botões de Download
-                dl1, dl2 = st.columns(2)
-                with dl1:
-                    pdf_data = gerar_pdf(res)
-                    st.download_button("📥 Baixar PDF", data=pdf_data, file_name="memorial.pdf", mime="application/pdf", use_container_width=True)
-                with dl2:
-                    docx_data = gerar_word(res)
-                    st.download_button("📝 Baixar Word", data=docx_data, file_name="memorial.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
-
-        # --- ABA 2: CÁLCULO ICC (CURTO CIRCUITO) ---
-        with tab2:
-            st.subheader("Estimativa Curto-Circuito")
+        # Função de Cálculo (Lógica Original)
+        def calcular_completo():
+            g_c = gap if gap > 0 else (152.0 if tensao >= 1.0 else 25.0)
+            d_c = distancia if distancia > 0 else (914.0 if tensao >= 1.0 else 457.2)
+            is_gap_std = (gap <= 0)
+            is_dist_std = (distancia <= 0)
+            lg_i = math.log10(corrente) if corrente > 0 else 0
             
-            def atualizar_icc():
-                try:
-                    t_kva = st.session_state['k_kva']
-                    t_v = st.session_state['k_v']
-                    t_z = st.session_state['k_z']
-                    usar_motor = st.session_state['k_motor']
-                    if t_v > 0 and t_z > 0:
-                        i_nom = (t_kva * 1000) / (math.sqrt(3) * t_v)
-                        i_cc_trafo = i_nom / (t_z / 100)
-                        i_motor = 4 * i_nom if usar_motor else 0
-                        i_total_ka = (i_cc_trafo + i_motor) / 1000
-                        st.session_state['corrente_stored'] = i_total_ka
-                        st.session_state['resultado_icc_detalhe'] = {'total': i_total_ka, 'nom': i_nom, 'trafo_ka': i_cc_trafo/1000, 'motor_ka': i_motor/1000}
-                        st.toast(f"Calculado: {i_total_ka:.3f} kA", icon="✅")
-                except: pass
-
-            c1, c2 = st.columns(2)
-            with c1:
-                st.number_input("Potência Trafo (kVA)", value=1000.0, step=100.0, key="k_kva")
-                st.number_input("Tensão Sec. (V)", value=380.0, step=10.0, key="k_v")
-            with c2:
-                st.number_input("Impedância Z (%)", value=5.0, step=0.1, key="k_z")
-                st.checkbox("Considerar Motores?", value=True, key="k_motor")
-            
-            st.write("")
-            st.button("Calcular Icc", on_click=atualizar_icc, type="primary", use_container_width=True)
-            
-            dados = st.session_state['resultado_icc_detalhe']
-            if dados:
-                st.divider()
-                st.metric("Icc Estimada", f"{dados['total']:.3f} kA")
-                st.success("Valor copiado automaticamente para a Aba 1.")
-
-    # --------------------------------------------------------
-    # COLUNA DA DIREITA: HISTÓRICO (SUPABASE)
-    # --------------------------------------------------------
-    with col_hist:
-        st.markdown("### 📂 Histórico")
-        if st.button("🔄 Atualizar"):
-            st.rerun()
-            
-        try:
-            # Busca histórico no Supabase
-            res_hist = supabase.table("arc_flash_history").select("*").order("created_at", desc=True).limit(20).execute()
-            
-            if res_hist.data:
-                # Exibe como cards ou dataframe simplificado
-                for item in res_hist.data:
-                    # Definição de cor baseada na energia (simplificada para visualização rápida)
-                    cor_barra = "green"
-                    if item['energia_cal'] > 8: cor_barra = "red"
-                    elif item['energia_cal'] > 1.2: cor_barra = "orange"
-                    
-                    with st.container(border=True):
-                        st.markdown(f"**{item['tag_equipamento']}**")
-                        st.caption(f"{pd.to_datetime(item['created_at']).strftime('%d/%m %H:%M')}")
-                        st.markdown(f"<span style='color:{cor_barra}; font-weight:bold; font-size:18px'>{item['energia_cal']} cal/cm²</span>", unsafe_allow_html=True)
-                        st.text(f"{item['tensao_kv']}kV | {item['corrente_ka']}kA")
+            if tensao < 1.0:
+                k_base, k_i, k_g = -0.555, 1.081, 0.0011
+                x_dist = 2.0
+                fator_v = 0.85 if tensao < 0.6 else 1.0
             else:
-                st.info("Nenhum histórico recente.")
-        except Exception as e:
-            st.error("Erro ao carregar histórico.")
+                k_base, k_i, k_g = -0.555, 1.081, 0.0011
+                x_dist = 2.0
+                fator_v = 1.15
 
+            lg_en = k_base + (k_i * lg_i) + (k_g * g_c)
+            en_base = 10 ** lg_en
+            fator_t = tempo / 0.2
+            fator_d = (610 / d_c) ** x_dist
+            e_final = 1.0 * en_base * fator_t * fator_d * fator_v
+            
+            if e_final < 1.2: cat, cor = "Risco Mínimo", "green"
+            elif e_final < 4.0: cat, cor = "Cat 1 / 2", "orange"
+            elif e_final < 8.0: cat, cor = "Cat 2", "darkorange"
+            elif e_final < 40.0: cat, cor = "Cat 3 / 4", "red"
+            else: cat, cor = "PERIGO", "black"
+
+            return {
+                'local': local_input, 'eq1': eq1_input, 'eq2': eq2_input,
+                'v': tensao, 'i': corrente, 't': tempo, 'g': g_c, 'd': d_c,
+                'is_gap_std': is_gap_std, 'is_dist_std': is_dist_std,
+                'k_base': k_base, 'k_i': k_i, 'k_g': k_g,
+                'lg_en': lg_en, 'en_base': en_base,
+                'fator_t': fator_t, 'fator_d': fator_d, 'fator_v': fator_v, 'x_dist': x_dist,
+                'e': e_final, 'cat': cat, 'cor': cor
+            }
+
+        # Botão Calcular
+        if st.button("CALCULAR", type="primary", use_container_width=True):
+            if tensao > 0 and corrente > 0 and tempo > 0:
+                resultado = calcular_completo()
+                st.session_state['ultimo_calculo'] = resultado
+            else:
+                st.warning("Preencha dados obrigatórios.")
+
+        # Resultados
+        if st.session_state['ultimo_calculo']:
+            res = st.session_state['ultimo_calculo']
+            st.divider()
+            st.markdown(f"**Resultado:** {res['local']} - {res['eq1']}")
+            
+            c_res1, c_res2 = st.columns([1, 2])
+            c_res1.metric("Energia Incidente", f"{res['e']:.2f} cal/cm²")
+            c_res2.markdown(f"<div style='background-color:{res['cor']};color:white;padding:15px;text-align:center;border-radius:10px;'><h3>{res['cat']}</h3></div>", unsafe_allow_html=True)
+            
+            st.divider()
+            st.caption("Ações:")
+            
+            # --- SALVAR (GRAVA NO SUPABASE MAS NÃO MOSTRA HISTÓRICO AQUI) ---
+            if st.button("💾 Gravar no Banco de Dados"):
+                try:
+                    payload = {
+                        "username": st.session_state['user_login'],
+                        "tag_equipamento": res['eq1'] if res['eq1'] else "Sem Tag",
+                        "tensao_kv": res['v'],
+                        "corrente_ka": res['i'],
+                        "tempo_s": res['t'],
+                        "distancia_mm": res['d'],
+                        "energia_cal": float(f"{res['e']:.2f}")
+                    }
+                    supabase.table("arc_flash_history").insert(payload).execute()
+                    st.toast("✅ Registro salvo no banco de dados!", icon="💾")
+                except Exception as e:
+                    st.error(f"Erro ao salvar: {e}")
+
+            # Botões de Download
+            dl1, dl2 = st.columns(2)
+            with dl1:
+                pdf_data = gerar_pdf(res)
+                st.download_button("📥 Baixar PDF", data=pdf_data, file_name="memorial.pdf", mime="application/pdf", use_container_width=True)
+            with dl2:
+                docx_data = gerar_word(res)
+                st.download_button("📝 Baixar Word", data=docx_data, file_name="memorial.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+
+    # ========================================================
+    # ABA 2: CÁLCULO ICC (CURTO CIRCUITO)
+    # ========================================================
+    with tab2:
+        st.subheader("Estimativa Curto-Circuito")
+        
+        def atualizar_icc():
+            try:
+                t_kva = st.session_state['k_kva']
+                t_v = st.session_state['k_v']
+                t_z = st.session_state['k_z']
+                usar_motor = st.session_state['k_motor']
+                if t_v > 0 and t_z > 0:
+                    i_nom = (t_kva * 1000) / (math.sqrt(3) * t_v)
+                    i_cc_trafo = i_nom / (t_z / 100)
+                    i_motor = 4 * i_nom if usar_motor else 0
+                    i_total_ka = (i_cc_trafo + i_motor) / 1000
+                    st.session_state['corrente_stored'] = i_total_ka
+                    st.session_state['resultado_icc_detalhe'] = {'total': i_total_ka, 'nom': i_nom, 'trafo_ka': i_cc_trafo/1000, 'motor_ka': i_motor/1000}
+                    st.toast(f"Calculado: {i_total_ka:.3f} kA", icon="✅")
+            except: pass
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.number_input("Potência Trafo (kVA)", value=1000.0, step=100.0, key="k_kva")
+            st.number_input("Tensão Sec. (V)", value=380.0, step=10.0, key="k_v")
+        with c2:
+            st.number_input("Impedância Z (%)", value=5.0, step=0.1, key="k_z")
+            st.checkbox("Considerar Motores?", value=True, key="k_motor")
+        
+        st.write("")
+        st.button("Calcular Icc", on_click=atualizar_icc, type="primary", use_container_width=True)
+        
+        dados = st.session_state['resultado_icc_detalhe']
+        if dados:
+            st.divider()
+            st.metric("Icc Estimada", f"{dados['total']:.3f} kA")
+            st.success("Valor copiado automaticamente para a Aba 1.")
+
+    # ========================================================
+    # ABA 3: HISTÓRICO (SOMENTE ADMIN)
+    # ========================================================
+    if isAdmin and tab3:
+        with tab3:
+            st.header("📂 Banco de Dados de Simulações")
+            st.write("Abaixo estão listados todos os cálculos salvos no sistema.")
+            
+            if st.button("🔄 Atualizar Dados"):
+                st.rerun()
+            
+            try:
+                # Busca histórico completo
+                res_hist = supabase.table("arc_flash_history").select("*").order("created_at", desc=True).execute()
+                
+                if res_hist.data:
+                    df = pd.DataFrame(res_hist.data)
+                    
+                    # Tratamento e Renomeação para Exibição
+                    # Verifica quais colunas vieram do banco para evitar erro
+                    cols_map = {
+                        'created_at': 'Data/Hora',
+                        'username': 'Usuário',
+                        'tag_equipamento': 'Tag/Equip',
+                        'energia_cal': 'Energia (cal/cm²)',
+                        'tensao_kv': 'Tensão (kV)',
+                        'corrente_ka': 'Corr. (kA)',
+                        'tempo_s': 'Tempo (s)',
+                        'distancia_mm': 'Dist. (mm)'
+                    }
+                    
+                    # Renomeia
+                    df.rename(columns=cols_map, inplace=True)
+                    
+                    # Formata Data
+                    if 'Data/Hora' in df.columns:
+                        df['Data/Hora'] = pd.to_datetime(df['Data/Hora']).dt.strftime('%d/%m/%Y %H:%M')
+
+                    # Seleciona apenas as colunas que interessam e estão presentes
+                    cols_final = [c for c in cols_map.values() if c in df.columns]
+                    
+                    st.dataframe(df[cols_final], use_container_width=True, hide_index=True)
+                else:
+                    st.info("Nenhum registro encontrado no banco de dados.")
+                    
+            except Exception as e:
+                st.error(f"Erro ao carregar banco de dados: {e}")
 
 # ==============================================================================
-# 4. SISTEMA DE LOGIN (AGORA VIA SUPABASE)
+# 4. SISTEMA DE LOGIN (VIA SUPABASE)
 # ==============================================================================
 
 if 'logged_in' not in st.session_state:
@@ -347,8 +372,6 @@ if 'logged_in' not in st.session_state:
 def admin_panel():
     st.sidebar.markdown("---")
     st.sidebar.subheader("🛡️ Admin")
-    # Para simplificar este código, removi a gestão completa de admin aqui para focar no cálculo
-    # Mas o usuário Admin continua existindo no banco.
     st.sidebar.info("Painel de gestão disponível via Supabase Dashboard.")
 
 # Tela de Login
