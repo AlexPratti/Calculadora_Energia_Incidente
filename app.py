@@ -135,7 +135,7 @@ def gerar_word(dados):
     return buffer
 
 # ==============================================================================
-# 3. LÓGICA DE LOGIN (PRIMEIRO PASSO)
+# 3. LÓGICA DE LOGIN (CADASTRO REFORMULADO)
 # ==============================================================================
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
@@ -150,63 +150,65 @@ if not st.session_state['logged_in']:
         
         if modo == "Entrar":
             with st.form("login_form"):
-                user = st.text_input("Usuário")
+                email = st.text_input("E-mail") # Mapeado para 'username' no banco
                 pwd = st.text_input("Senha", type="password")
                 submitted = st.form_submit_button("Entrar", type="primary")
                 
                 if submitted:
                     try:
-                        res = supabase.table('users').select("*").eq('username', user).eq('password', pwd).execute()
+                        # Busca pelo email na coluna username
+                        res = supabase.table('users').select("*").eq('username', email).eq('password', pwd).execute()
                         if res.data:
                             data = res.data[0]
                             if data.get('approved'):
                                 st.session_state['logged_in'] = True
                                 
-                                # LÓGICA CORRIGIDA: Se for 'admin', é admin. Se não, é user.
-                                if user == 'admin':
+                                # Verifica se é admin (Pelo email 'admin' ou outro critério)
+                                if email == 'admin' or email == 'admin@weg.net': # Exemplo
                                     st.session_state['user_role'] = 'admin'
                                 else:
                                     st.session_state['user_role'] = 'user'
                                 
-                                st.session_state['user_name'] = data.get('name', user)
-                                st.session_state['user_login'] = user
+                                st.session_state['user_name'] = data.get('name', email)
+                                st.session_state['user_login'] = email
                                 st.rerun()
                             else:
                                 st.warning("🚫 Usuário pendente de aprovação.")
                         else:
-                            st.error("Usuário ou senha incorretos.")
+                            st.error("E-mail ou senha incorretos.")
                     except Exception as e:
                         st.error(f"Erro de conexão: {e}")
         
         else: # Criar Conta
             with st.form("cadastro_form"):
                 st.markdown("### Novo Cadastro")
-                new_user = st.text_input("Defina seu Usuário")
-                new_name = st.text_input("Seu Nome Completo")
+                new_name = st.text_input("Nome")
+                new_email = st.text_input("E-mail")
                 new_pass = st.text_input("Defina sua Senha", type="password")
                 reg_btn = st.form_submit_button("Solicitar Acesso")
                 
                 if reg_btn:
-                    if new_user and new_name and new_pass:
+                    if new_email and new_name and new_pass:
                         try:
-                            check = supabase.table('users').select("*").eq('username', new_user).execute()
+                            # Verifica duplicidade
+                            check = supabase.table('users').select("*").eq('username', new_email).execute()
                             if check.data:
-                                st.error("Este usuário já existe.")
+                                st.error("Este e-mail já está cadastrado.")
                             else:
-                                # CORREÇÃO: Removemos o campo 'role' pois ele não existe no banco
+                                # Salva E-mail no campo username para manter compatibilidade
                                 payload = {
-                                    "username": new_user,
+                                    "username": new_email,
                                     "name": new_name,
                                     "password": new_pass,
                                     "approved": False
                                 }
                                 supabase.table('users').insert(payload).execute()
-                                st.success("✅ Cadastro realizado! Aguarde aprovação.")
+                                st.success("✅ Cadastro realizado! Aguarde aprovação do administrador.")
                         except Exception as e:
                             st.error(f"Erro ao cadastrar: {e}")
                     else:
-                        st.warning("Preencha todos os campos.")
-    st.stop() # Para aqui se não estiver logado
+                        st.warning("Preencha Nome, E-mail e Senha.")
+    st.stop()
 
 # ==============================================================================
 # 4. APP PRINCIPAL (SÓ EXECUTA SE LOGADO)
@@ -237,32 +239,42 @@ if isAdmin:
     st.sidebar.markdown("---")
     st.sidebar.subheader("🛡️ Admin Panel")
     
-    # Aprovar
+    # Aprovação
     try:
         pendentes = supabase.table('users').select("*").eq('approved', False).execute()
         if pendentes.data:
             st.sidebar.warning(f"Pendentes: {len(pendentes.data)}")
-            lista_pend = {u['username']: u['name'] for u in pendentes.data}
-            sel_user = st.sidebar.selectbox("Aprovar:", list(lista_pend.keys()))
-            if st.sidebar.button(f"Liberar {sel_user}"):
-                supabase.table('users').update({'approved': True}).eq('username', sel_user).execute()
-                st.sidebar.success(f"{sel_user} aprovado!")
+            # Mostra Nome (Email) para facilitar
+            lista_pend = {f"{u['name']} ({u['username']})": u['username'] for u in pendentes.data}
+            
+            # Selectbox retorna a chave (string visivel), pegamos o valor (email) depois
+            sel_display = st.sidebar.selectbox("Aprovar:", list(lista_pend.keys()))
+            sel_email = lista_pend[sel_display]
+            
+            if st.sidebar.button(f"Liberar Acesso"):
+                supabase.table('users').update({'approved': True}).eq('username', sel_email).execute()
+                st.sidebar.success(f"Aprovado!")
                 st.rerun()
         else:
             st.sidebar.info("Sem aprovações pendentes.")
     except: pass
     
     st.sidebar.markdown("---")
-    # Excluir
+    # Exclusão (Real do Banco de Dados)
     try:
-        all_users = supabase.table('users').select("username").neq('username', 'admin').neq('username', st.session_state['user_login']).execute()
+        all_users = supabase.table('users').select("*").neq('username', 'admin').neq('username', st.session_state['user_login']).execute()
         if all_users.data:
-            lista_del = [u['username'] for u in all_users.data]
-            user_del = st.sidebar.selectbox("Excluir Usuário:", ["..."] + lista_del)
-            if user_del != "...":
-                if st.sidebar.button(f"Confirmar Exclusão de {user_del}"):
-                    supabase.table('users').delete().eq('username', user_del).execute()
-                    st.sidebar.success("Excluído.")
+            # Cria lista legível: "Nome (email)"
+            users_map = {f"{u['name']} ({u['username']})": u['username'] for u in all_users.data}
+            
+            user_display = st.sidebar.selectbox("Excluir Usuário:", ["..."] + list(users_map.keys()))
+            
+            if user_display != "...":
+                email_to_delete = users_map[user_display]
+                if st.sidebar.button(f"🗑️ Excluir Definitivamente"):
+                    # Deleta do banco
+                    supabase.table('users').delete().eq('username', email_to_delete).execute()
+                    st.sidebar.success("Usuário excluído do banco de dados.")
                     st.rerun()
     except: pass
 
@@ -278,7 +290,7 @@ if 'corrente_stored' not in st.session_state: st.session_state['corrente_stored'
 if 'resultado_icc_detalhe' not in st.session_state: st.session_state['resultado_icc_detalhe'] = None
 if 'ultimo_calculo' not in st.session_state: st.session_state['ultimo_calculo'] = None
 
-# CRIAÇÃO DAS ABAS (3 se Admin, 2 se User)
+# CRIAÇÃO DAS ABAS
 if isAdmin:
     tab1, tab2, tab3 = st.tabs(["🔥 Energia Incidente", "🧮 Icc (Curto)", "📂 Histórico (Admin)"])
 else:
@@ -306,7 +318,7 @@ with tab1:
     with c4: gap = st.number_input("Gap (mm)", value=0.0, step=1.0)
     with c5: distancia = st.number_input("Distância (mm)", value=0.0, step=10.0)
 
-    # Cálculo Local
+    # Cálculo
     def calcular_completo():
         g_c = gap if gap > 0 else (152.0 if tensao >= 1.0 else 25.0)
         d_c = distancia if distancia > 0 else (914.0 if tensao >= 1.0 else 457.2)
