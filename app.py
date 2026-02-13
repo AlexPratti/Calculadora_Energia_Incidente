@@ -151,8 +151,8 @@ if not st.session_state['logged_in']:
         
         if modo == "Entrar":
             with st.form("login_form"):
-                nome_login = st.text_input("Nome", key="input_nome_login_final_v3") 
-                pwd = st.text_input("Senha", type="password", key="input_pwd_login_final_v3")
+                nome_login = st.text_input("Nome", key="input_nome_login_v4") 
+                pwd = st.text_input("Senha", type="password", key="input_pwd_login_v4")
                 submitted = st.form_submit_button("Entrar", type="primary")
                 
                 if submitted:
@@ -161,23 +161,18 @@ if not st.session_state['logged_in']:
                         
                         if res.data:
                             data = res.data[0]
-                            # Verifica aprovação
                             if data.get('approved'):
-                                
-                                # Verifica Contrato (Data)
+                                # Verifica Contrato
                                 exp_str = data.get('expiration_date')
                                 contrato_valido = True
-                                
                                 if exp_str:
                                     try:
                                         validade = datetime.strptime(exp_str, '%Y-%m-%d').date()
-                                        if date.today() > validade:
-                                            contrato_valido = False
+                                        if date.today() > validade: contrato_valido = False
                                     except: pass
 
                                 if contrato_valido:
                                     st.session_state['logged_in'] = True
-                                    
                                     email_db = data.get('username')
                                     if email_db == 'admin' or nome_login.lower() == 'admin':
                                         st.session_state['user_role'] = 'admin'
@@ -187,7 +182,7 @@ if not st.session_state['logged_in']:
                                     st.session_state['user_name'] = data.get('name')
                                     st.session_state['user_login'] = email_db
                                     
-                                    # LOG AUTOMÁTICO DE LOGIN
+                                    # LOG AUTOMÁTICO
                                     try:
                                         supabase.table("arc_flash_history").insert({
                                             "username": email_db,
@@ -199,7 +194,6 @@ if not st.session_state['logged_in']:
                                             "energia_cal": 0.0
                                         }).execute()
                                     except: pass
-                                    
                                     st.rerun()
                                 else:
                                     st.error(f"⛔ Contrato expirado em {validade.strftime('%d/%m/%Y')}.")
@@ -216,7 +210,6 @@ if not st.session_state['logged_in']:
                 new_name = st.text_input("Nome")
                 new_email = st.text_input("E-mail")
                 new_pass = st.text_input("Defina sua Senha", type="password")
-                
                 reg_btn = st.form_submit_button("Solicitar Acesso")
                 
                 if reg_btn:
@@ -276,7 +269,6 @@ if isAdmin:
             lista_pend = {f"{u['name']} ({u['username']})": u['username'] for u in pendentes.data}
             sel_display = st.sidebar.selectbox("Liberar:", list(lista_pend.keys()))
             sel_email = lista_pend[sel_display]
-            
             if st.sidebar.button(f"✅ Liberar + 1 Ano"):
                 validade_nova = (datetime.now() + timedelta(days=365)).strftime('%Y-%m-%d')
                 supabase.table('users').update({
@@ -290,7 +282,6 @@ if isAdmin:
     except: pass
     
     st.sidebar.markdown("---")
-    
     # Bloqueio
     try:
         active_users = supabase.table('users').select("*").eq('approved', True).neq('username', 'admin').neq('username', st.session_state['user_login']).execute()
@@ -306,8 +297,7 @@ if isAdmin:
     except: pass
 
     st.sidebar.markdown("---")
-    
-    # Exclusão Completa
+    # Exclusão
     try:
         all_users = supabase.table('users').select("*").neq('username', 'admin').neq('username', st.session_state['user_login']).execute()
         if all_users.data:
@@ -317,7 +307,6 @@ if isAdmin:
                 email_del = users_map[user_del]
                 if st.sidebar.button(f"🗑️ Excluir Definitivo"):
                     try:
-                        # Deleta histórico e usuário
                         supabase.table('arc_flash_history').delete().eq('username', email_del).execute()
                         supabase.table('users').delete().eq('username', email_del).execute()
                         st.sidebar.success("Excluído.")
@@ -337,12 +326,13 @@ if 'corrente_stored' not in st.session_state: st.session_state['corrente_stored'
 if 'resultado_icc_detalhe' not in st.session_state: st.session_state['resultado_icc_detalhe'] = None
 if 'ultimo_calculo' not in st.session_state: st.session_state['ultimo_calculo'] = None
 
-# ABAS
+# ABAS (4 se Admin)
 if isAdmin:
-    tab1, tab2, tab3 = st.tabs(["🔥 Energia Incidente", "🧮 Icc (Curto)", "📂 Histórico (Admin)"])
+    # Nova Aba adicionada: "👥 Usuários"
+    tab1, tab2, tab3, tab4 = st.tabs(["🔥 Energia Incidente", "🧮 Icc (Curto)", "👥 Usuários (Admin)", "📂 Logs de Atividades"])
 else:
     tab1, tab2 = st.tabs(["🔥 Energia Incidente", "🧮 Icc (Curto)"])
-    tab3 = None
+    tab3, tab4 = None, None
 
 # === ABA 1: CÁLCULO ===
 with tab1:
@@ -397,13 +387,12 @@ with tab1:
             'e': e_final, 'cat': cat, 'cor': cor
         }
 
-    # BOTÃO CALCULAR COM GRAVAÇÃO AUTOMÁTICA
+    # CÁLCULO E GRAVAÇÃO AUTOMÁTICA
     if st.button("CALCULAR", type="primary", use_container_width=True):
         if tensao > 0 and corrente > 0:
             res = calcular_completo()
             st.session_state['ultimo_calculo'] = res
             
-            # --- GRAVAÇÃO AUTOMÁTICA ---
             try:
                 payload = {
                     "username": st.session_state['user_login'],
@@ -418,7 +407,6 @@ with tab1:
                 st.toast("✅ Cálculo realizado e salvo automaticamente!", icon="💾")
             except Exception as e:
                 st.error(f"Erro ao salvar: {e}")
-            # ---------------------------
         else:
             st.warning("Preencha os dados.")
 
@@ -432,8 +420,6 @@ with tab1:
         
         st.divider()
         st.caption("Downloads:")
-        
-        # Apenas Botões de Download (Gravação já foi feita)
         cb1, cb2 = st.columns(2)
         with cb1:
             st.download_button("📥 Baixar PDF", data=gerar_pdf(res), file_name="memorial.pdf", mime="application/pdf", use_container_width=True)
@@ -472,11 +458,51 @@ with tab2:
         st.metric("Icc Estimada", f"{st.session_state['resultado_icc_detalhe']['total']:.3f} kA")
         st.success("Valor copiado automaticamente para a Aba 1.")
 
-# === ABA 3: HISTÓRICO (ADMIN) ===
+# === ABA 3: USUÁRIOS (NOVA) ===
 if isAdmin and tab3:
     with tab3:
-        st.header("📂 Banco de Dados de Simulações")
-        if st.button("🔄 Atualizar Dados"):
+        st.header("👥 Base de Usuários Cadastrados")
+        if st.button("🔄 Atualizar Usuários"):
+            st.rerun()
+        try:
+            # Busca usuários diretos da tabela 'users' (sem repetição)
+            res_users = supabase.table('users').select("*").order("name").execute()
+            if res_users.data:
+                df_u = pd.DataFrame(res_users.data)
+                
+                # Tratamento de Data de Cadastro (created_at)
+                if 'created_at' in df_u.columns:
+                    df_u['created_at'] = pd.to_datetime(df_u['created_at'], utc=True)
+                    df_u['created_at'] = df_u['created_at'].dt.tz_convert('America/Sao_Paulo').dt.strftime('%d/%m/%Y %H:%M')
+                
+                # Tratamento de Validade
+                if 'expiration_date' not in df_u.columns:
+                    df_u['expiration_date'] = '-'
+                
+                # Seleção e Renomeação
+                cols_map_u = {
+                    'name': 'Nome',
+                    'username': 'E-mail',
+                    'created_at': 'Data Cadastro',
+                    'approved': 'Ativo?',
+                    'expiration_date': 'Vencimento Contrato'
+                }
+                df_u.rename(columns=cols_map_u, inplace=True)
+                
+                # Filtra apenas colunas existentes
+                final_cols_u = [c for c in cols_map_u.values() if c in df_u.columns]
+                
+                st.dataframe(df_u[final_cols_u], use_container_width=True, hide_index=True)
+            else:
+                st.info("Nenhum usuário cadastrado.")
+        except Exception as e:
+            st.error(f"Erro ao carregar usuários: {e}")
+
+# === ABA 4: LOGS (ANTIGO HISTÓRICO) ===
+if isAdmin and tab4:
+    with tab4:
+        st.header("📂 Logs de Atividades e Cálculos")
+        if st.button("🔄 Atualizar Logs"):
             st.rerun()
         try:
             res_hist = supabase.table("arc_flash_history").select("*").order("created_at", desc=True).execute()
@@ -487,7 +513,6 @@ if isAdmin and tab3:
                     'energia_cal': 'Energia', 'tensao_kv': 'kV', 'corrente_ka': 'kA'
                 }
                 df.rename(columns=cols_map, inplace=True)
-                # UTC -> SP
                 if 'Data/Hora' in df.columns:
                     df['Data/Hora'] = pd.to_datetime(df['Data/Hora'], utc=True)
                     df['Data/Hora'] = df['Data/Hora'].dt.tz_convert('America/Sao_Paulo').dt.strftime('%d/%m/%Y %H:%M')
