@@ -140,7 +140,8 @@ def gerar_word(dados):
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
     st.session_state['user_role'] = None
-    st.session_state['user_login'] = None
+    st.session_state['user_login'] = None # Guardará o E-mail para referência
+    st.session_state['user_name'] = None
 
 if not st.session_state['logged_in']:
     col1, col2, col3 = st.columns([1,1,1])
@@ -150,38 +151,41 @@ if not st.session_state['logged_in']:
         
         if modo == "Entrar":
             with st.form("login_form"):
-                email = st.text_input("E-mail") 
+                # ALTERADO: Pede Nome em vez de E-mail
+                nome_login = st.text_input("Nome") 
                 pwd = st.text_input("Senha", type="password")
                 submitted = st.form_submit_button("Entrar", type="primary")
                 
                 if submitted:
                     try:
-                        res = supabase.table('users').select("*").eq('username', email).eq('password', pwd).execute()
+                        # Busca pela coluna 'name' e 'password'
+                        res = supabase.table('users').select("*").eq('name', nome_login).eq('password', pwd).execute()
+                        
                         if res.data:
                             data = res.data[0]
                             if data.get('approved'):
                                 st.session_state['logged_in'] = True
                                 
-                                # Verifica admin
-                                if email == 'admin' or email == 'admin@weg.net': # Exemplo
+                                # Verifica se é admin (Pode checar o username 'admin' ou pelo nome)
+                                # Para garantir, checamos se o nome ou username é 'admin'
+                                if data.get('username') == 'admin' or nome_login.lower() == 'admin':
                                     st.session_state['user_role'] = 'admin'
                                 else:
                                     st.session_state['user_role'] = 'user'
                                 
-                                st.session_state['user_name'] = data.get('name', email)
-                                st.session_state['user_login'] = email
+                                st.session_state['user_name'] = data.get('name')
+                                st.session_state['user_login'] = data.get('username') # Guarda o email internamente
                                 st.rerun()
                             else:
                                 st.warning("🚫 Usuário pendente de aprovação.")
                         else:
-                            st.error("E-mail ou senha incorretos.")
+                            st.error("Nome ou senha incorretos.")
                     except Exception as e:
                         st.error(f"Erro de conexão: {e}")
         
         else: # Criar Conta
             with st.form("cadastro_form"):
                 st.markdown("### Novo Cadastro")
-                # CAMPOS EXATAMENTE COMO SOLICITADO
                 new_name = st.text_input("Nome")
                 new_email = st.text_input("E-mail")
                 new_pass = st.text_input("Defina sua Senha", type="password")
@@ -191,13 +195,13 @@ if not st.session_state['logged_in']:
                 if reg_btn:
                     if new_email and new_name and new_pass:
                         try:
-                            # Verifica duplicidade
+                            # Verifica duplicidade pelo email (chave única)
                             check = supabase.table('users').select("*").eq('username', new_email).execute()
                             if check.data:
                                 st.error("Este e-mail já está cadastrado.")
                             else:
                                 payload = {
-                                    "username": new_email, # Salva email no username
+                                    "username": new_email, # Salva email no username (ID Único)
                                     "name": new_name,      # Salva nome no name
                                     "password": new_pass,
                                     "approved": False
@@ -224,6 +228,7 @@ with st.sidebar.expander("🔑 Alterar Minha Senha"):
         btn_mudar = st.form_submit_button("Atualizar")
         if btn_mudar:
             try:
+                # Usa user_login (email) para garantir unicidade na troca de senha
                 chk = supabase.table('users').select("*").eq('username', st.session_state['user_login']).eq('password', senha_atual).execute()
                 if chk.data:
                     supabase.table('users').update({'password': nova_senha}).eq('username', st.session_state['user_login']).execute()
