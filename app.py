@@ -1,11 +1,50 @@
 import streamlit as st
 import math
-
-# Configuração da página
-st.set_page_config(page_title="Cálculo de Energia Incidente", page_icon="⚡", layout="wide")
+from supabase import create_client
 
 # ==============================================================================
-# Funções para os cálculos
+# CONFIGURAÇÃO DA PÁGINA E CONEXÃO COM SUPABASE
+# ==============================================================================
+st.set_page_config(
+    page_title="Cálculo de Energia Incidente - ABNT NBR 17227",
+    page_icon="⚡",
+    layout="wide",
+)
+
+SUPABASE_URL = "https://lfgqxphittdatzknwkqw.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmZ3F4cGhpdHRkYXR6a253a3F3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NzYyNzUsImV4cCI6MjA4NjQ1MjI3NX0.fZSfStTC5GdnP0Md1O0ptq8dD84zV-8cgirqIQTNO4Y"
+
+@st.cache_resource
+def init_supabase():
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+supabase = init_supabase()
+
+# ==============================================================================
+# LOGIN E SISTEMA DE RESTRIÇÃO
+# ==============================================================================
+if 'logged_in' not in st.session_state:
+    st.session_state['logged_in'] = False
+
+if not st.session_state['logged_in']:
+    st.title("🔒 Sistema Arc Flash")
+    login_col1, login_col2 = st.columns([1, 2])
+    with login_col2:
+        username = st.text_input("Usuário (admin)", placeholder="Digite seu usuário")
+        password = st.text_input("Senha", type="password")
+        if st.button("Entrar"):
+            if username == "admin" and password == "admin":
+                st.session_state['logged_in'] = True
+                st.success("Login realizado com sucesso!")
+            else:
+                st.error("Usuário ou senha incorretos.")
+    st.stop()
+
+st.sidebar.success("Bem-vindo, administrador!")
+st.title("Cálculo de Energia Incidente - Conforme ABNT NBR 17227")
+
+# ==============================================================================
+# FUNÇÕES PARA CÁLCULOS
 # ==============================================================================
 
 # Função para calcular CF automaticamente
@@ -15,24 +54,13 @@ def calcular_cf(altura, largura, config_eletrodos):
     if largura is None or largura == 0:
         largura = 762.0  # Valor típico para conjunto de manobra 15 kV
     
-    if altura <= 508 and largura <= 508:
-        # Invólucro classificado como raso
-        ees = (altura + largura) / 2
-        if config_eletrodos == "VCB":
-            cf = 1 / (0.00222 * ees**2 - 0.0256 * ees + 0.6222)
-        elif config_eletrodos == "VCBB":
-            cf = 1 / (-0.0028 * ees**2 + 0.1194 * ees - 0.2778)
-        elif config_eletrodos == "HCB":
-            cf = 1 / (-0.0006 * ees**2 + 0.03722 * ees + 0.4778)
-    else:
-        # Invólucro classificado como típico
-        ees = (altura + largura) / 2
-        if config_eletrodos == "VCB":
-            cf = -0.0003 * ees**2 + 0.03441 * ees + 0.4325
-        elif config_eletrodos == "VCBB":
-            cf = -0.0003 * ees**2 + 0.032 * ees + 0.479
-        elif config_eletrodos == "HCB":
-            cf = -0.0002 * ees**2 + 0.01935 * ees + 0.6899
+    ees = (altura + largura) / 2
+    if config_eletrodos == "VCB":
+        cf = -0.0003 * ees**2 + 0.03441 * ees + 0.4325
+    elif config_eletrodos == "VCBB":
+        cf = -0.0003 * ees**2 + 0.032 * ees + 0.479
+    elif config_eletrodos == "HCB":
+        cf = -0.0002 * ees**2 + 0.01935 * ees + 0.6899
     return cf
 
 # Função para calcular VarCf automaticamente
@@ -47,7 +75,7 @@ def calcular_varcf(voc, config_eletrodos):
              k[4] * voc**2 + k[5] * voc + k[6])
     return varcf
 
-# Funções para interpolação da corrente de arco
+# Função para calcular corrente de arco
 def calcular_correntes_interpoladas(voc, ibf, g, config_eletrodos):
     coef = {
         "VCB": {
@@ -85,41 +113,11 @@ def calcular_correntes_interpoladas(voc, ibf, g, config_eletrodos):
     iarc_final = iarc3 if voc <= 2.7 else iarc2
     return iarc600, iarc2700, iarc14300, iarc_final
 
-# Função para calcular energia incidente
-def calcular_energia_incidente(voc, ibf, g, d, t, cf, iarc600, iarc2700, iarc14300, config_eletrodos):
-    coef = {
-        "VCB": {
-            "600": [0.753364, 0.566, 1.752636, 0, 0, -4.783E-09, 1.962E-06, -0.000229, 0.003141, 1.092, 0, -1.598, 0.957],
-        },
-    }
-
-    def energia(voc_level, iarc, coeffs):
-        log_ibf = math.log10(ibf)
-        log_g = math.log10(g)
-        log_d = math.log10(d)
-        energia = (
-            (12.552 / 50)
-            * (
-                coeffs[0]
-                + coeffs[1] * log_g
-                + (t / 10) * coeffs[2] * iarc
-                + coeffs[3] * ibf**7
-                + math.log10(1 / cf)
-            )
-        )
-        return energia
-
-    e600 = energia("600", iarc600, coef[config_eletrodos]["600"])
-    return e600
-
 # ==============================================================================
-# Interface Streamlit
+# INTERFACE STREAMLIT
 # ==============================================================================
 
-# Título
-st.title("Arc Flash - Cálculo de Energia Incidente")
-
-# Entradas do usuário:
+st.subheader("Entradas do Usuário:")
 voc = st.number_input("Tensão de circuito aberto Voc (kV):", value=13.8, step=0.1)
 ibf = st.number_input("Corrente de falta trifásica franca Ibf (kA):", value=4.852, step=0.01)
 g = st.number_input("Distância entre os eletrodos G (mm):", value=152.0, step=1.0)
@@ -129,15 +127,12 @@ altura = st.number_input("Altura do invólucro (mm):", value=1143.0, step=1.0)
 largura = st.number_input("Largura do invólucro (mm):", value=762.0, step=1.0)
 config_eletrodos = st.selectbox("Configuração dos eletrodos:", ["VCB", "VCBB", "HCB"])
 
-# Cálculos automáticos
 cf = calcular_cf(altura, largura, config_eletrodos)
 varcf = calcular_varcf(voc, config_eletrodos)
 iarc600, iarc2700, iarc14300, iarc_final = calcular_correntes_interpoladas(voc, ibf, g, config_eletrodos)
-energia_final = calcular_energia_incidente(voc, ibf, g, d, t, cf, iarc600, iarc2700, iarc14300, config_eletrodos)
 
-# Exibição dos resultados
-st.subheader("Resultados")
+st.subheader("Resultados:")
 st.write(f"CF: {cf:.2f}")
 st.write(f"VarCf: {varcf:.2f}")
 st.write(f"Corrente de arco intermediária para 600 V: {iarc600:.2f} kA")
-st.write(f"Energia incidente final: {energia_final:.2f} cal/cm²")
+st.write(f"Corrente de arco final: {iarc_final:.2f} kA")
