@@ -4,138 +4,552 @@ from fpdf import FPDF
 from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+import io
+import pandas as pd
+from supabase import create_client, Client
 from datetime import datetime, timedelta, date
-from supabase import create_client
 
 # ==============================================================================
-# CONFIGURAÇÃO DA PÁGINA E CONEXÃO SUPABASE
+# 1. CONFIGURAÇÃO DA PÁGINA E CONEXÃO SUPABASE
 # ==============================================================================
 st.set_page_config(page_title="Cálculo de Energia Incidente", page_icon="⚡", layout="wide")
 
+# 👇 CREDENCIAIS (Idealmente usar st.secrets em produção)
 SUPABASE_URL = "https://lfgqxphittdatzknwkqw.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmZ3F4cGhpdHRkYXR6a253a3F3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NzYyNzUsImV4cCI6MjA4NjQ1MjI3NX0.fZSfStTC5GdnP0Md1O0ptq8dD84zV-8cgirqIQTNO4Y"
 
 @st.cache_resource
 def init_supabase():
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+    try:
+        # Tenta pegar dos secrets do Streamlit Cloud primeiro
+        return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
+    except:
+        # Fallback para as credenciais hardcoded (apenas para teste local)
+        return create_client(SUPABASE_URL, SUPABASE_KEY)
 
-supabase = init_supabase()
+try:
+    supabase = init_supabase()
+except Exception as e:
+    st.error(f"Erro de conexão com Supabase: {e}")
+    st.stop()
 
 # ==============================================================================
-# LOGIN E SISTEMA DE RESTRIÇÃO
+# 2. FUNÇÕES AUXILIARES (PDF, WORD, FORMATAÇÃO)
+# ==============================================================================
+def ft(texto):
+    """Corrige codificação para PDF (latin-1)"""
+    try:
+        if texto is None: return ""
+        return str(texto).encode('latin-1', 'replace').decode('latin-1')
+    except:
+        return str(texto)
+
+def gerar_pdf(dados):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, ft('Memorial de Cálculo - Arc Flash'), 0, 1, 'C') 
+    pdf.set_font("Arial", 'I', 9)
+    pdf.cell(0, 6, 'Conforme NBR 17227 / IEEE 1584', 0, 1, 'C')
+    pdf.ln(4)
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(0, 6, ft(f"Local: {dados['local']}"), 0, 1, 'C')
+    eq_texto = dados['eq1']
+    if dados['eq2']: eq_texto += f" [{dados['eq2']}]"
+    pdf.set_font("Arial", 'B', 11)
+    pdf.cell(0, 6, ft(eq_texto), 0, 1, 'C')
+    pdf.ln(8)
+    pdf.set_fill_color(230, 230, 230)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(0, 7, ft("1. PARÂMETROS DE ENTRADA"), 1, 1, 'L', 1)
+    pdf.set_font("Arial", size=10)
+    pdf.ln(2)
+    pdf.cell(95, 6, ft(f"Tensão Nominal: {dados['v']:.3f} kV"), 0, 0)
+    pdf.cell(95, 6, ft(f"Corrente de Curto (Ibf): {dados['i']:.3f} kA"), 0, 1)
+    pdf.cell(95, 6, ft(f"Tempo de Arco: {dados['t']:.4f} s"), 0, 0)
+    pdf.cell(95, 6, ft("Configuração: VCB"), 0, 1)
+    gap_txt = "(Padrao)" if dados['is_gap_std'] else "(Manual)"
+    dist_txt = "(Padrao)" if dados['is_dist_std'] else "(Manual)"
+    pdf.cell(95, 6, ft(f"Gap: {dados['g']:.1f} mm {gap_txt}"), 0, 0)
+    pdf.cell(95, 6, ft(f"Distância: {dados['d']:.1f} mm {dist_txt}"), 0, 1)
+    pdf.ln(5)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(0, 7, ft("2. ROTEIRO DE CÁLCULO"), 1, 1, 'L', 1)
+    pdf.set_font("Courier", size=9)
+    pdf.ln(2)
+    pdf.cell(0, 5, f"A) Logaritmos:", 0, 1)
+    pdf.cell(0, 5, f"   Log(Ibf)={math.log10(dados['i']):.4f} | Log(Gap)={math.log10(dados['g']):.4f}", 0, 1)
+    pdf.ln(2)
+    pdf.cell(0, 5, ft(f"B) Energia Base (En):"), 0, 1)
+    pdf.cell(0, 5, f"   Log(En) = {dados['lg_en']:.4f} -> En = {dados['en_base']:.4f} cal/cm2", 0, 1)
+    pdf.ln(2)
+    pdf.cell(0, 5, ft(f"C) Fatores:"), 0, 1)
+    pdf.cell(0, 5, f"   Tempo ({dados['t']}s/0.2s): {dados['fator_t']:.2f}", 0, 1)
+    pdf.cell(0, 5, f"   Distancia (610/{dados['d']})^2: {dados['fator_d']:.3f}", 0, 1)
+    pdf.cell(0, 5, f"   Fator Tensao: {dados['fator_v']}", 0, 1)
+    pdf.ln(5)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(0, 7, ft("3. RESULTADO E CLASSIFICAÇÃO"), 1, 1, 'L', 1)
+    pdf.ln(3)
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, ft(f"Energia Incidente: {dados['e']:.2f} cal/cm²"), 0, 1)
+    pdf.set_font("Arial", size=11)
+    pdf.set_text_color(0, 0, 0)
+    if dados['e'] > 40: pdf.set_text_color(200, 0, 0)
+    elif dados['e'] >= 8: pdf.set_text_color(200, 100, 0)
+    pdf.cell(0, 8, ft(f"Classificação: {dados['cat']}"), 0, 1)
+    pdf.set_text_color(0, 0, 0) 
+    pdf.ln(5)
+    pdf.set_font("Arial", 'I', 8)
+    pdf.cell(0, 5, ft("Nota: A vestimenta deve possuir ATPV superior à energia calculada."), 0, 1)
+    return pdf.output(dest='S').encode('latin-1')
+
+def gerar_word(dados):
+    doc = Document()
+    head = doc.add_heading('Memorial - Arc Flash', 0) 
+    head.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_local = doc.add_paragraph()
+    p_local.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_l = p_local.add_run(f"Local: {dados['local']}")
+    run_l.bold = True
+    run_l.font.size = Pt(12)
+    eq_texto = dados['eq1']
+    if dados['eq2']: eq_texto += f" [{dados['eq2']}]"
+    p_eq = doc.add_paragraph()
+    p_eq.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_eq = p_eq.add_run(eq_texto)
+    run_eq.bold = True
+    run_eq.font.size = Pt(11)
+    doc.add_paragraph("-" * 70).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_heading('1. Parâmetros', level=1)
+    p = doc.add_paragraph()
+    p.add_run(f"Tensão: {dados['v']:.3f} kV | Corrente: {dados['i']:.3f} kA | Tempo: {dados['t']:.4f} s\n")
+    p.add_run(f"Gap: {dados['g']:.1f} mm | Distância: {dados['d']:.1f} mm\n")
+    p.add_run("Configuração: VCB")
+    doc.add_heading('2. Resultado', level=1)
+    p_res = doc.add_paragraph()
+    run_res = p_res.add_run(f"{dados['e']:.2f} cal/cm²")
+    run_res.bold = True
+    run_res.font.size = Pt(16)
+    doc.add_paragraph(f"Classificação: {dados['cat']}")
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+# ==============================================================================
+# 3. LÓGICA DE LOGIN / CADASTRO (ATUALIZADA)
 # ==============================================================================
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
+    st.session_state['user_role'] = None
+    st.session_state['user_login'] = None
+    st.session_state['user_name'] = None
 
 if not st.session_state['logged_in']:
-    st.title("🔒 Sistema Arc Flash")
-    username = st.text_input("Usuário (admin)", placeholder="Digite seu usuário")
-    password = st.text_input("Senha", type="password")
-    if st.button("Entrar"):
-        if username == "admin" and password == "admin":
-            st.session_state['logged_in'] = True
-            st.success("Login realizado com sucesso!")
-        else:
-            st.error("Usuário ou senha incorretos.")
+    col1, col2, col3 = st.columns([1,1,1])
+    with col2:
+        st.title("🔒 Sistema Arc Flash")
+        modo = st.radio("Acesso:", ["Entrar", "Criar Conta"], horizontal=True)
+        
+        # --- LOGIN ---
+        if modo == "Entrar":
+            with st.form("login_form"):
+                # ALTERADO: Label e lógica para E-mail ou 'admin'
+                login_input = st.text_input("E-mail (ou 'admin')", key="input_email_login_v5", placeholder="exemplo@weg.net") 
+                pwd = st.text_input("Senha", type="password", key="input_pwd_login_v5")
+                submitted = st.form_submit_button("Entrar", type="primary")
+                
+                if submitted:
+                    # Normaliza input (remove espaços)
+                    login_clean = login_input.strip()
+                    
+                    try:
+                        # ALTERADO: Busca estritamente pelo campo 'username' (que é o email ou 'admin')
+                        # Não buscamos mais pelo 'name' para evitar confusão.
+                        res = supabase.table('users').select("*").eq('username', login_clean).eq('password', pwd).execute()
+                        
+                        if res.data:
+                            data = res.data[0]
+                            
+                            # Verifica aprovação do admin
+                            if data.get('approved'):
+                                
+                                # Verifica validade do contrato
+                                exp_str = data.get('expiration_date')
+                                contrato_valido = True
+                                
+                                if exp_str:
+                                    try:
+                                        validade = datetime.strptime(exp_str, '%Y-%m-%d').date()
+                                        if date.today() > validade: contrato_valido = False
+                                    except: pass
+
+                                if contrato_valido:
+                                    st.session_state['logged_in'] = True
+                                    
+                                    email_db = data.get('username')
+                                    
+                                    # Define papel (Role)
+                                    if email_db == 'admin':
+                                        st.session_state['user_role'] = 'admin'
+                                    else:
+                                        st.session_state['user_role'] = 'user'
+                                    
+                                    st.session_state['user_name'] = data.get('name')
+                                    st.session_state['user_login'] = email_db
+                                    
+                                    # LOG AUTOMÁTICO DE LOGIN
+                                    try:
+                                        supabase.table("arc_flash_history").insert({
+                                            "username": email_db,
+                                            "tag_equipamento": "🟢 LOGIN DO SISTEMA",
+                                            "tensao_kv": 0.0,
+                                            "corrente_ka": 0.0,
+                                            "tempo_s": 0.0,
+                                            "distancia_mm": 0.0,
+                                            "energia_cal": 0.0
+                                        }).execute()
+                                    except: pass
+                                    
+                                    st.rerun()
+                                else:
+                                    st.error(f"⛔ Contrato expirado em {validade.strftime('%d/%m/%Y')}.")
+                            else:
+                                st.warning("🚫 Usuário pendente de aprovação ou bloqueado.")
+                        else:
+                            st.error("E-mail ou senha incorretos.")
+                    except Exception as e:
+                        st.error(f"Erro de conexão: {e}")
+        
+        # --- CADASTRO ---
+        else: 
+            with st.form("cadastro_form"):
+                st.markdown("### Novo Cadastro")
+                new_name = st.text_input("Nome Completo")
+                
+                # Campo E-mail com aviso
+                new_email = st.text_input("E-mail")
+                st.caption("⚠️ **Importante:** Verifique se o e-mail está correto. O administrador entrará em contato através dele para validar seu cadastro antes da liberação.")
+                
+                new_pass = st.text_input("Defina sua Senha", type="password")
+                reg_btn = st.form_submit_button("Solicitar Acesso")
+                
+                if reg_btn:
+                    if new_email and new_name and new_pass:
+                        try:
+                            # Verifica se e-mail já existe
+                            clean_email = new_email.strip()
+                            check = supabase.table('users').select("*").eq('username', clean_email).execute()
+                            if check.data:
+                                st.error("Este e-mail já está cadastrado.")
+                            else:
+                                payload = {
+                                    "username": clean_email, 
+                                    "name": new_name,
+                                    "password": new_pass,
+                                    "approved": False
+                                }
+                                supabase.table('users').insert(payload).execute()
+                                st.success("✅ Cadastro realizado! Aguarde aprovação.")
+                        except Exception as e:
+                            st.error(f"Erro ao cadastrar: {e}")
+                    else:
+                        st.warning("Preencha todos os campos.")
     st.stop()
 
-st.sidebar.success("Bem-vindo, administrador!")
-st.title("Cálculo de Energia Incidente - Conforme ABNT NBR 17227")
-
 # ==============================================================================
-# FUNÇÕES PARA CÁLCULOS
+# 4. APP PRINCIPAL (SÓ CARREGA SE LOGADO)
 # ==============================================================================
 
-def calcular_cf(altura, largura, config_eletrodos):
-    """Calcula o fator de correção do invólucro (CF)"""
-    if altura is None or altura == 0:
-        altura = 1143.0  # Valor típico para conjunto de manobra 15 kV
-    if largura is None or largura == 0:
-        largura = 762.0  # Valor típico para conjunto de manobra 15 kV
+st.sidebar.success(f"Olá, {st.session_state['user_name']}")
+
+# 4.1 Troca de Senha
+with st.sidebar.expander("🔑 Alterar Minha Senha"):
+    with st.form("mudar_senha"):
+        senha_atual = st.text_input("Senha Atual", type="password")
+        nova_senha = st.text_input("Nova Senha", type="password")
+        btn_mudar = st.form_submit_button("Atualizar")
+        if btn_mudar:
+            try:
+                chk = supabase.table('users').select("*").eq('username', st.session_state['user_login']).eq('password', senha_atual).execute()
+                if chk.data:
+                    supabase.table('users').update({'password': nova_senha}).eq('username', st.session_state['user_login']).execute()
+                    st.success("Senha alterada!")
+                else:
+                    st.error("Senha atual incorreta.")
+            except: pass
+
+# 4.2 Painel Admin
+isAdmin = (st.session_state['user_role'] == 'admin')
+if isAdmin:
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🛡️ Admin Panel")
     
-    ees = (altura + largura) / 2
-    if config_eletrodos == "VCB":
-        cf = -0.0003 * ees**2 + 0.03441 * ees + 0.4325
-    elif config_eletrodos == "VCBB":
-        cf = -0.0003 * ees**2 + 0.032 * ees + 0.479
-    elif config_eletrodos == "HCB":
-        cf = -0.0002 * ees**2 + 0.01935 * ees + 0.6899
-    return cf
+    # Aprovação / Renovação
+    try:
+        pendentes = supabase.table('users').select("*").eq('approved', False).execute()
+        if pendentes.data:
+            st.sidebar.warning(f"Pendentes: {len(pendentes.data)}")
+            # Mostra Nome (email) para facilitar identificação
+            lista_pend = {f"{u['name']} ({u['username']})": u['username'] for u in pendentes.data}
+            sel_display = st.sidebar.selectbox("Liberar:", list(lista_pend.keys()))
+            sel_email = lista_pend[sel_display]
+            
+            if st.sidebar.button(f"✅ Liberar + 1 Ano"):
+                validade_nova = (datetime.now() + timedelta(days=365)).strftime('%Y-%m-%d')
+                supabase.table('users').update({
+                    'approved': True,
+                    'expiration_date': validade_nova
+                }).eq('username', sel_email).execute()
+                st.sidebar.success(f"Liberado até {datetime.strptime(validade_nova, '%Y-%m-%d').strftime('%d/%m/%Y')}")
+                st.rerun()
+        else:
+            st.sidebar.info("Sem pendências.")
+    except: pass
+    
+    st.sidebar.markdown("---")
+    
+    # Bloqueio
+    try:
+        active_users = supabase.table('users').select("*").eq('approved', True).neq('username', 'admin').neq('username', st.session_state['user_login']).execute()
+        if active_users.data:
+            lista_ativos = {f"{u['name']} ({u['username']})": u['username'] for u in active_users.data}
+            user_block = st.sidebar.selectbox("Bloquear:", ["..."] + list(lista_ativos.keys()))
+            if user_block != "...":
+                email_blk = lista_ativos[user_block]
+                if st.sidebar.button(f"🚫 Bloquear"):
+                    supabase.table('users').update({'approved': False}).eq('username', email_blk).execute()
+                    st.sidebar.warning("Bloqueado.")
+                    st.rerun()
+    except: pass
 
-def calcular_varcf(voc, config_eletrodos):
-    """Calcula o fator de correção da variação da corrente de arco"""
-    coef = {
-        "VCB": [0, -0.0000014269, 0.000083137, -0.0019382, 0.022366, -0.12645, 0.30226],
-        "VCBB": [1.138E-06, -6.0287E-05, 0.0012758, -0.013778, 0.080217, -0.24066, 0.33524],
-        "HCB": [0, -3.097E-06, 0.00016405, -0.0033609, 0.033308, -0.16182, 0.34627],
-    }
-    k = coef[config_eletrodos]
-    varcf = (k[0] * voc**6 + k[1] * voc**5 + k[2] * voc**4 + k[3] * voc**3 +
-             k[4] * voc**2 + k[5] * voc + k[6])
-    return varcf
+    st.sidebar.markdown("---")
+    
+    # Exclusão Completa
+    try:
+        all_users = supabase.table('users').select("*").neq('username', 'admin').neq('username', st.session_state['user_login']).execute()
+        if all_users.data:
+            users_map = {f"{u['name']} ({u['username']})": u['username'] for u in all_users.data}
+            user_del = st.sidebar.selectbox("Excluir:", ["..."] + list(users_map.keys()))
+            if user_del != "...":
+                email_del = users_map[user_del]
+                if st.sidebar.button(f"🗑️ Excluir Definitivo"):
+                    try:
+                        # Remove histórico primeiro (constraints) e depois o usuário
+                        supabase.table('arc_flash_history').delete().eq('username', email_del).execute()
+                        supabase.table('users').delete().eq('username', email_del).execute()
+                        st.sidebar.success("Excluído.")
+                        st.rerun()
+                    except: st.sidebar.error("Erro ao excluir.")
+    except: pass
 
-def calcular_correntes_interpoladas(voc, ibf, g, config_eletrodos):
-    """Calcula as correntes de arco intermediárias e finais"""
-    coef = {
-        "VCB": {
-            "600": [-0.04287, 1.035, -0.083, 0, 0, -4.783E-09, 1.962E-06, -0.000229, 0.003141, 1.092],
-            "2700": [0.0065, 1.001, -0.024, -1.557E-12, 4.556E-10, -4.186E-08, 8.346E-07, 5.482E-05, -0.003191, 0.9729],
-            "14300": [0.005795, 1.015, -0.011, -1.557E-12, 4.556E-10, -4.186E-08, 8.346E-07, 5.482E-05, -0.003191, 0.9729],
-        },
-    }
+st.sidebar.markdown("---")
+if st.sidebar.button("Sair do Sistema"):
+    st.session_state['logged_in'] = False
+    st.rerun()
 
-    def calcular_iarc(voc_level, ibf, g, coeffs):
-        log_ibf = math.log10(ibf)
-        log_g = math.log10(g)
-        result = 10 ** (
-            coeffs[0]
-            + coeffs[1] * log_ibf
-            + coeffs[2] * log_g
-            + coeffs[3] * ibf**6
-            + coeffs[4] * ibf**5
-            + coeffs[5] * ibf**4
-            + coeffs[6] * ibf**3
-            + coeffs[7] * ibf**2
-            + coeffs[8] * ibf
-            + coeffs[9]
-        )
-        return result
+# --- ÁREA CENTRAL ---
+st.markdown(f"### ⚡ Cálculo de Arc Flash")
 
-    iarc600 = calcular_iarc("600", ibf, g, coef[config_eletrodos]["600"])
-    iarc2700 = calcular_iarc("2700", ibf, g, coef[config_eletrodos]["2700"])
-    iarc14300 = calcular_iarc("14300", ibf, g, coef[config_eletrodos]["14300"])
+if 'corrente_stored' not in st.session_state: st.session_state['corrente_stored'] = 17.0
+if 'resultado_icc_detalhe' not in st.session_state: st.session_state['resultado_icc_detalhe'] = None
+if 'ultimo_calculo' not in st.session_state: st.session_state['ultimo_calculo'] = None
 
-    # Interpolação para tensões entre 600 V e 15 kV
-    iarc1 = ((iarc2700 - iarc600) / 2.1) * (voc - 2.7) + iarc2700
-    iarc2 = ((iarc14300 - iarc2700) / 11.6) * (voc - 14.3) + iarc14300
-    iarc3 = ((iarc1 * (2.7 - voc)) / 2.1) + ((iarc2 * (voc - 0.6)) / 2.1)
+# CONFIGURAÇÃO DAS ABAS
+if isAdmin:
+    # 4 Abas para Admin (Incluindo a nova aba de Usuários)
+    tab1, tab2, tab3, tab4 = st.tabs(["🔥 Energia Incidente", "🧮 Icc (Curto)", "👥 Usuários (Admin)", "📂 Logs de Atividades"])
+else:
+    # 2 Abas para usuário comum
+    tab1, tab2 = st.tabs(["🔥 Energia Incidente", "🧮 Icc (Curto)"])
+    tab3, tab4 = None, None
 
-    # Determinação da corrente final
-    iarc_final = iarc3 if voc <= 2.7 else iarc2
-    return iarc600, iarc2700, iarc14300, iarc_final
+# === ABA 1: CÁLCULO ===
+with tab1:
+    st.subheader("Análise de Energia")
+    with st.container(border=True):
+        st.caption("Identificação")
+        local_input = st.text_input("Local", placeholder="Ex: Sala Elétrica 01")
+        c_eq1, c_eq2 = st.columns(2)
+        with c_eq1: eq1_input = st.text_input("Equipamento", placeholder="Ex: QGBT Geral")
+        with c_eq2: eq2_input = st.text_input("Detalhe", placeholder="Ex: Disjuntor Entrada")
 
-# ==============================================================================
-# INTERFACE STREAMLIT
-# ==============================================================================
+    st.write("")
+    st.info("Parâmetros do Arco:")
+    c1, c2, c3 = st.columns(3)
+    with c1: tensao = st.number_input("1. Tensão (kV)", value=13.80, format="%.3f")
+    with c2: corrente = st.number_input("2. Corrente (kA)", key="corrente_stored", format="%.3f")
+    with c3: tempo = st.number_input("3. Tempo (s)", value=0.500, format="%.4f")
 
-st.subheader("Entradas do Usuário:")
-voc = st.number_input("Tensão de circuito aberto Voc (kV):", value=13.8, step=0.1)
-ibf = st.number_input("Corrente de falta trifásica franca Ibf (kA):", value=4.852, step=0.01)
-g = st.number_input("Distância entre os eletrodos G (mm):", value=152.0, step=1.0)
-d = st.number_input("Distância de trabalho D (mm):", value=914.4, step=10.0)
-t = st.number_input("Duração do arco T (s):", value=0.488, step=0.001)
-altura = st.number_input("Altura do invólucro (mm):", value=1143.0, step=1.0)
-largura = st.number_input("Largura do invólucro (mm):", value=762.0, step=1.0)
-config_eletrodos = st.selectbox("Configuração dos eletrodos:", ["VCB", "VCBB", "HCB"])
+    c4, c5 = st.columns(2)
+    with c4: gap = st.number_input("Gap (mm)", value=0.0, step=1.0)
+    with c5: distancia = st.number_input("Distância (mm)", value=0.0, step=10.0)
 
-# Cálculos automáticos
-cf = calcular_cf(altura, largura, config_eletrodos)
-varcf = calcular_varcf(voc, config_eletrodos)
-iarc600, iarc2700, iarc14300, iarc_final = calcular_correntes_interpoladas(voc, ibf, g, config_eletrodos)
+    def calcular_completo():
+        g_c = gap if gap > 0 else (152.0 if tensao >= 1.0 else 25.0)
+        d_c = distancia if distancia > 0 else (914.0 if tensao >= 1.0 else 457.2)
+        lg_i = math.log10(corrente) if corrente > 0 else 0
+        if tensao < 1.0:
+            k_base, k_i, k_g = -0.555, 1.081, 0.0011
+            x_dist = 2.0
+            fator_v = 0.85 if tensao < 0.6 else 1.0
+        else:
+            k_base, k_i, k_g = -0.555, 1.081, 0.0011
+            x_dist = 2.0
+            fator_v = 1.15
+        lg_en = k_base + (k_i * lg_i) + (k_g * g_c)
+        en_base = 10 ** lg_en
+        fator_t = tempo / 0.2
+        fator_d = (610 / d_c) ** x_dist
+        e_final = 1.0 * en_base * fator_t * fator_d * fator_v
+        
+        if e_final < 1.2: cat, cor = "Risco Mínimo", "green"
+        elif e_final < 4.0: cat, cor = "Cat 1 / 2", "orange"
+        elif e_final < 8.0: cat, cor = "Cat 2", "darkorange"
+        elif e_final < 40.0: cat, cor = "Cat 3 / 4", "red"
+        else: cat, cor = "PERIGO", "black"
 
-# Exibição dos resultados
-st.subheader("Resultados:")
-st.write(f"CF: {cf:.2f}")
-st.write(f"VarCf: {varcf:.2f}")
-st.write(f"Corrente de arco intermediária para 600 V: {iarc600:.2f} kA")
-st.write(f"Corrente de arco final: {iarc_final:.2f} kA")
+        return {
+            'local': local_input, 'eq1': eq1_input, 'eq2': eq2_input,
+            'v': tensao, 'i': corrente, 't': tempo, 'g': g_c, 'd': d_c,
+            'lg_en': lg_en, 'en_base': en_base,
+            'fator_t': fator_t, 'fator_d': fator_d, 'fator_v': fator_v, 'is_gap_std': gap<=0, 'is_dist_std': distancia<=0,
+            'e': e_final, 'cat': cat, 'cor': cor
+        }
+
+    # CÁLCULO E GRAVAÇÃO AUTOMÁTICA
+    if st.button("CALCULAR", type="primary", use_container_width=True):
+        if tensao > 0 and corrente > 0:
+            res = calcular_completo()
+            st.session_state['ultimo_calculo'] = res
+            
+            try:
+                payload = {
+                    "username": st.session_state['user_login'],
+                    "tag_equipamento": res['eq1'] if res['eq1'] else "Sem Tag",
+                    "tensao_kv": res['v'],
+                    "corrente_ka": res['i'],
+                    "tempo_s": res['t'],
+                    "distancia_mm": res['d'],
+                    "energia_cal": float(f"{res['e']:.2f}")
+                }
+                supabase.table("arc_flash_history").insert(payload).execute()
+                st.toast("✅ Cálculo realizado e salvo automaticamente!", icon="💾")
+            except Exception as e:
+                st.error(f"Erro ao salvar: {e}")
+        else:
+            st.warning("Preencha os dados.")
+
+    if st.session_state['ultimo_calculo']:
+        res = st.session_state['ultimo_calculo']
+        st.divider()
+        st.markdown(f"**Resultado:** {res['local']} - {res['eq1']}")
+        cr1, cr2 = st.columns([1, 2])
+        cr1.metric("Energia Incidente", f"{res['e']:.2f} cal/cm²")
+        cr2.markdown(f"<div style='background-color:{res['cor']};color:white;padding:15px;text-align:center;border-radius:10px;'><h3>{res['cat']}</h3></div>", unsafe_allow_html=True)
+        
+        st.divider()
+        st.caption("Downloads:")
+        cb1, cb2 = st.columns(2)
+        with cb1:
+            st.download_button("📥 Baixar PDF", data=gerar_pdf(res), file_name="memorial.pdf", mime="application/pdf", use_container_width=True)
+        with cb2:
+            st.download_button("📝 Baixar Word", data=gerar_word(res), file_name="memorial.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+
+# === ABA 2: ICC ===
+with tab2:
+    st.subheader("Estimativa Curto-Circuito")
+    def atualizar_icc():
+        try:
+            t_kva = st.session_state['k_kva']
+            t_v = st.session_state['k_v']
+            t_z = st.session_state['k_z']
+            if t_v > 0 and t_z > 0:
+                i_nom = (t_kva * 1000) / (math.sqrt(3) * t_v)
+                i_cc = i_nom / (t_z / 100)
+                i_mot = 4 * i_nom if st.session_state['k_motor'] else 0
+                total = (i_cc + i_mot) / 1000
+                st.session_state['corrente_stored'] = total
+                st.session_state['resultado_icc_detalhe'] = {'total': total}
+                st.toast(f"Calculado: {total:.3f} kA", icon="✅")
+        except: pass
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.number_input("Potência Trafo (kVA)", value=1000.0, step=100.0, key="k_kva")
+        st.number_input("Tensão Sec. (V)", value=380.0, step=10.0, key="k_v")
+    with c2:
+        st.number_input("Impedância Z (%)", value=5.0, step=0.1, key="k_z")
+        st.checkbox("Considerar Motores?", value=True, key="k_motor")
+    st.write("")
+    st.button("Calcular Icc", on_click=atualizar_icc, type="primary", use_container_width=True)
+    if st.session_state['resultado_icc_detalhe']:
+        st.divider()
+        st.metric("Icc Estimada", f"{st.session_state['resultado_icc_detalhe']['total']:.3f} kA")
+        st.success("Valor copiado automaticamente para a Aba 1.")
+
+# === ABA 3: USUÁRIOS (NOVA) ===
+if isAdmin and tab3:
+    with tab3:
+        st.header("👥 Base de Usuários Cadastrados")
+        if st.button("🔄 Atualizar Lista"):
+            st.rerun()
+        try:
+            # Busca usuários diretos da tabela 'users' (sem repetição)
+            res_users = supabase.table('users').select("*").order("name").execute()
+            if res_users.data:
+                df_u = pd.DataFrame(res_users.data)
+                
+                # Tratamento de Data de Cadastro (created_at)
+                if 'created_at' in df_u.columns:
+                    df_u['created_at'] = pd.to_datetime(df_u['created_at'], utc=True)
+                    df_u['created_at'] = df_u['created_at'].dt.tz_convert('America/Sao_Paulo').dt.strftime('%d/%m/%Y %H:%M')
+                
+                # Tratamento de Validade
+                if 'expiration_date' not in df_u.columns:
+                    df_u['expiration_date'] = '-'
+                
+                # Seleção e Renomeação para exibição
+                cols_map_u = {
+                    'name': 'Nome',
+                    'username': 'E-mail',
+                    'created_at': 'Data Cadastro',
+                    'approved': 'Ativo?',
+                    'expiration_date': 'Vencimento Contrato'
+                }
+                df_u.rename(columns=cols_map_u, inplace=True)
+                
+                # Filtra apenas colunas existentes para não dar erro
+                final_cols_u = [c for c in cols_map_u.values() if c in df_u.columns]
+                
+                st.dataframe(df_u[final_cols_u], use_container_width=True, hide_index=True)
+            else:
+                st.info("Nenhum usuário cadastrado.")
+        except Exception as e:
+            st.error(f"Erro ao carregar usuários: {e}")
+
+# === ABA 4: LOGS (ANTIGO HISTÓRICO) ===
+if isAdmin and tab4:
+    with tab4:
+        st.header("📂 Logs de Atividades e Cálculos")
+        if st.button("🔄 Atualizar Logs"):
+            st.rerun()
+        try:
+            res_hist = supabase.table("arc_flash_history").select("*").order("created_at", desc=True).execute()
+            if res_hist.data:
+                df = pd.DataFrame(res_hist.data)
+                cols_map = {
+                    'created_at': 'Data/Hora', 'username': 'Usuário', 'tag_equipamento': 'Tag',
+                    'energia_cal': 'Energia', 'tensao_kv': 'kV', 'corrente_ka': 'kA'
+                }
+                df.rename(columns=cols_map, inplace=True)
+                if 'Data/Hora' in df.columns:
+                    df['Data/Hora'] = pd.to_datetime(df['Data/Hora'], utc=True)
+                    df['Data/Hora'] = df['Data/Hora'].dt.tz_convert('America/Sao_Paulo').dt.strftime('%d/%m/%Y %H:%M')
+                final_cols = [c for c in cols_map.values() if c in df.columns]
+                st.dataframe(df[final_cols], use_container_width=True, hide_index=True)
+            else:
+                st.info("Nenhum registro encontrado.")
+        except Exception as e:
+            st.error(f"Erro ao carregar banco: {e}")
