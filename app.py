@@ -54,15 +54,19 @@ if 'auth' not in st.session_state:
 if st.session_state['auth'] is None:
     st.title("🔐 Acesso ao Sistema NBR 17227")
     t1, t2 = st.tabs(["Entrar", "Solicitar Acesso"])
+
+with tab1:
+    st.subheader("Configuração")  # Esta linha agora tem o recuo correto
     
-    with tab1:
-    st.subheader("Configuração")
+    # Seleção do equipamento
     equip_sel = st.selectbox("Selecione o Equipamento:", list(equipamentos.keys()), key="sel_equip_principal")
     info = equipamentos[equip_sel]
     
+    # Seleção das dimensões (inclui opção manual)
     op_dim = list(info["dims"].keys()) + ["Inserir Dimensões Manualmente"]
     sel_dim = st.selectbox(f"Dimensões para {equip_sel}:", options=op_dim, key="sel_dim_detalhe")
     
+    # Lógica para dimensões manuais ou automáticas
     if sel_dim == "Inserir Dimensões Manualmente":
         st.info("Digite os valores personalizados:")
         c_m1, c_m2, c_m3 = st.columns(3)
@@ -74,22 +78,25 @@ if st.session_state['auth'] is None:
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # --- LINHA 1: GAP E DISTÂNCIA ---
+    # --- EXIBIÇÃO DE GAP E DISTÂNCIA (LINHA 1) ---
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown(f"**GAP (mm)**")
-        st.markdown(f"<h2 style='color: white;'>{info['gap']}</h2>", unsafe_allow_html=True)
+        st.write("**GAP (mm)**")
+        st.write(f"## {info['gap']}")
     with c2:
-        st.markdown(f"**Distância (mm)**")
-        st.markdown(f"<h2 style='color: white;'>{info['dist']}</h2>", unsafe_allow_html=True)
+        st.write("**Distância (mm)**")
+        st.write(f"## {info['dist']}")
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # --- LINHA 2: A, L e P (RESOLUÇÃO DO SEU PROBLEMA) ---
+    # --- EXIBIÇÃO DE A, L E P (LINHA 2) ---
     c4, c5, c6 = st.columns(3)
-    c4.markdown(f"**Altura [A]:** {alt} mm")
-    c5.markdown(f"**Largura [L]:** {larg} mm")
-    c6.markdown(f"**Profundidade [P]:** {prof} mm")
+    with c4:
+        st.write(f"**Altura [A]:** {alt} mm")
+    with c5:
+        st.write(f"**Largura [L]:** {larg} mm")
+    with c6:
+        st.write(f"**Profundidade [P]:** {prof} mm")
     
     with t2:
         ne = st.text_input("Seu E-mail para cadastro")
@@ -140,22 +147,6 @@ equipamentos = {
 
 tab1, tab2, tab3 = st.tabs(["Equipamento/Dimensões", "Cálculos e Resultados", "Relatório"])
 
-with tab1:
-    st.subheader("Configuração")
-    equip_sel = st.selectbox("Selecione o Equipamento:", list(equipamentos.keys()))
-    info = equipamentos[equip_sel]
-    op_dim = list(info["dims"].keys()) + ["Inserir Dimensões Manualmente"]
-    sel_dim = st.selectbox(f"Dimensões para {equip_sel}:", options=op_dim)
-    if sel_dim == "Inserir Dimensões Manualmente":
-        c_m1, c_m2, c_m3 = st.columns(3)
-        alt, larg, prof = c_m1.number_input("Altura [A]"), c_m2.number_input("Largura [L]"), c_m3.number_input("Profundidade [P]")
-    else: alt, larg, prof = info["dims"][sel_dim]
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    c1.metric("GAP (mm)", f"{info['gap']}"); c2.metric("Distância (mm)", f"{info['dist']}")
-    r2c1, r2c2, r2c3 = st.columns(3)
-    r2c1.write(f"**Altura [A]:** {alt} mm"); r2c2.write(f"**Largura [L]:** {larg} mm"); r2c3.write(f"**Profundidade [P]:** {prof} mm")
 
 with tab2:
     col1, col2, col3 = st.columns(3)
