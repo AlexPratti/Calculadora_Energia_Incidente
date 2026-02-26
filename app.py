@@ -11,7 +11,7 @@ from reportlab.lib.units import cm
 # --- CONEXÃO SUPABASE ---
 # Substitua pelos seus dados reais
 URL_SUPABASE = "https://lfgqxphittdatzknwkqw.supabase.co" 
-KEY_SUPABASE = "COLE_AQUI_A_SUA_PUBLISHABLE_KEY" 
+KEY_SUPABASE = "sb_publishable_zLiarara0IVVcwQm6oR2IQ_Sb0YOWTe" 
 supabase: Client = create_client(URL_SUPABASE, KEY_SUPABASE)
 
 # --- FUNÇÕES CORE (CÁLCULOS NBR 17227) ---
