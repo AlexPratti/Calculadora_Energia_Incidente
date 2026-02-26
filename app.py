@@ -58,7 +58,7 @@ if st.session_state['auth'] is None:
         u = st.text_input("Usuário (E-mail)")
         p = st.text_input("Senha", type="password")
         if st.button("Acessar"):
-            if u == "admin" and p == "2153App":
+            if u == "admin" and p == "2153App.":
                 st.session_state['auth'] = {"role": "admin", "user": "admin", "email": "admin"}
                 st.rerun()
             else:
