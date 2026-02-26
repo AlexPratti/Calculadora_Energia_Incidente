@@ -11,6 +11,7 @@ from reportlab.lib.units import cm
 # --- 1. CONEXÃO COM O BANCO DE DADOS (SUPABASE) ---
 URL_SUPABASE = "https://lfgqxphittdatzknwkqw.supabase.co" 
 KEY_SUPABASE = "sb_publishable_zLiarara0IVVcwQm6oR2IQ_Sb0YOWTe"
+ 
 
 try:
     supabase: Client = create_client(URL_SUPABASE, KEY_SUPABASE)
@@ -65,16 +66,16 @@ if st.session_state['auth'] is None:
                 try:
                     res = supabase.table("usuarios").select("*").eq("email", u).eq("senha", p).execute()
                     if res.data:
-                        user_data = res.data[0]
-                        if user_data['status'] == 'ativo':
-                            data_ap = datetime.fromisoformat(user_data['data_aprovacao'].replace('Z', '+00:00'))
+                        u_data = res.data[0]
+                        if u_data['status'] == 'ativo':
+                            data_ap = datetime.fromisoformat(u_data['data_aprovacao'].replace('Z', '+00:00'))
                             if datetime.now(timezone.utc) > data_ap + timedelta(days=365):
                                 st.error("Acesso expirado (validade de 1 ano).")
                             else:
                                 st.session_state['auth'] = {"role": "user", "user": u}
                                 st.rerun()
                         else:
-                            st.warning(f"Acesso: {user_data['status'].upper()}")
+                            st.warning(f"Acesso: {u_data['status'].upper()}")
                     else:
                         st.error("E-mail ou senha incorretos.")
                 except Exception as e:
@@ -102,7 +103,8 @@ if st.session_state['auth']['role'] == "admin":
             users = supabase.table("usuarios").select("*").execute().data
             if users:
                 for user in users:
-                    c1, c2, c3 = st.columns()
+                    # CORREÇÃO DO ERRO: st.columns(3) agora possui o argumento '3'
+                    c1, c2, c3 = st.columns(3)
                     status_icon = "🟢" if user['status'] == 'ativo' else "🟡"
                     c1.write(f"{status_icon} **{user['email']}**")
                     if user['status'] == 'pendente' and c2.button("Aprovar", key=user['email']):
@@ -151,10 +153,12 @@ with tab2:
         k_ia = {600: [-0.04287, 1.035, -0.083, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092], 2700: [0.0065, 1.001, -0.024, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729], 14300: [0.005795, 1.015, -0.011, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729]}
         k_en = {600: [0.753364, 0.566, 1.752636, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092, 0, -1.598, 0.957], 2700: [2.40021, 0.165, 0.354202, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.569, 0.9778], 14300: [3.825917, 0.11, -0.999749, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.568, 0.99]}
         ees = (alt/25.4 + larg/25.4) / 2.0; cf = -0.0003*ees**2 + 0.03441*ees + 0.4325
-        # CORREÇÃO DA LINHA 179:
+        
+        # RESTAURAÇÃO DAS LISTAS DE TENSÕES [600, 2700, 14300]
         ia_sts = [calc_ia_step(i_bf, gap_g, k_ia[v]) for v in [600, 2700, 14300]]
         en_sts = [calc_en_step(ia, i_bf, gap_g, dist_d, tempo_t, k_en[v], cf) for ia, v in zip(ia_sts, [600, 2700, 14300])]
         dl_sts = [calc_dla_step(ia, i_bf, gap_g, tempo_t, k_en[v], cf) for ia, v in zip(ia_sts, [600, 2700, 14300])]
+        
         ia_f = interpolar(v_oc, *ia_sts); e_cal = interpolar(v_oc, *en_sts)/4.184; dla_f = interpolar(v_oc, *dl_sts)
         cat = "CAT 2" if e_cal <= 8 else "CAT 4" if e_cal <= 40 else "EXTREMO RISCO"
         st.session_state['res'] = {"Ia": ia_f, "E_cal": e_cal, "DLA": dla_f, "Cat": cat, "Voc": v_oc, "Equip": equip_sel, "Gap": gap_g, "Dist": dist_d, "Dim": f"{alt}x{larg}x{prof}", "Ibf": i_bf, "Tempo": tempo_t}
@@ -172,4 +176,4 @@ with tab3:
                 c.drawString(1.5*cm, y, text); y -= 0.6*cm
             c.save(); return buf.getvalue()
         st.download_button("📩 Baixar Laudo PDF", export_pdf(), "laudo.pdf", "application/pdf")
-    else: st.info("⚠️ Calcule primeiro.")
+    else: st.info("⚠️ Calcule para habilitar o relatório.")
