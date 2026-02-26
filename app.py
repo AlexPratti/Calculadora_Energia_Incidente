@@ -55,33 +55,41 @@ if st.session_state['auth'] is None:
     st.title("🔐 Acesso ao Sistema NBR 17227")
     t1, t2 = st.tabs(["Entrar", "Solicitar Acesso"])
     
-    with t1:
-        u = st.text_input("Usuário (E-mail)")
-        p = st.text_input("Senha", type="password")
-        if st.button("Acessar"):
-            if u == "admin" and p == "2153App":
-                st.session_state['auth'] = {"role": "admin", "user": "Administrador"}
-                st.rerun()
-            else:
-                try:
-                    res = supabase.table("usuarios").select("*").eq("email", u).eq("senha", p).execute()
-                    if res.data:
-                        # Corrigindo a leitura da lista de usuários
-                        u_data = res.data[0] 
-                        if u_data['status'] == 'ativo':
-                            # Verificação técnica de validade de 1 ano
-                            data_ap = datetime.fromisoformat(u_data['data_aprovacao'].replace('Z', '+00:00'))
-                            if datetime.now(timezone.utc) > data_ap + timedelta(days=365):
-                                st.error("Seu acesso expirou (validade de 1 ano atingida).")
-                            else:
-                                st.session_state['auth'] = {"role": "user", "user": u}
-                                st.rerun()
-                        else:
-                            st.warning(f"Seu acesso está: {u_data['status'].upper()}. Aguarde aprovação.")
-                    else:
-                        st.error("E-mail ou senha incorretos.")
-                except Exception as e:
-                    st.error(f"Erro ao processar login: {e}")
+    with tab1:
+    st.subheader("Configuração")
+    equip_sel = st.selectbox("Selecione o Equipamento:", list(equipamentos.keys()), key="sel_equip_principal")
+    info = equipamentos[equip_sel]
+    
+    op_dim = list(info["dims"].keys()) + ["Inserir Dimensões Manualmente"]
+    sel_dim = st.selectbox(f"Dimensões para {equip_sel}:", options=op_dim, key="sel_dim_detalhe")
+    
+    if sel_dim == "Inserir Dimensões Manualmente":
+        st.info("Digite os valores personalizados:")
+        c_m1, c_m2, c_m3 = st.columns(3)
+        alt = c_m1.number_input("Altura [A] (mm)", value=500.0, key="manual_alt")
+        larg = c_m2.number_input("Largura [L] (mm)", value=500.0, key="manual_larg")
+        prof = c_m3.number_input("Profundidade [P] (mm)", value=500.0, key="manual_prof")
+    else:
+        alt, larg, prof = info["dims"][sel_dim]
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # --- LINHA 1: GAP E DISTÂNCIA ---
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown(f"**GAP (mm)**")
+        st.markdown(f"<h2 style='color: white;'>{info['gap']}</h2>", unsafe_allow_html=True)
+    with c2:
+        st.markdown(f"**Distância (mm)**")
+        st.markdown(f"<h2 style='color: white;'>{info['dist']}</h2>", unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # --- LINHA 2: A, L e P (RESOLUÇÃO DO SEU PROBLEMA) ---
+    c4, c5, c6 = st.columns(3)
+    c4.markdown(f"**Altura [A]:** {alt} mm")
+    c5.markdown(f"**Largura [L]:** {larg} mm")
+    c6.markdown(f"**Profundidade [P]:** {prof} mm")
     
     with t2:
         ne = st.text_input("Seu E-mail para cadastro")
