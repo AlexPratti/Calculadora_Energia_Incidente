@@ -11,7 +11,7 @@ from reportlab.lib.units import cm
 # --- 1. CONEXÃO COM O BANCO DE DADOS (SUPABASE) ---
 URL_SUPABASE = "https://lfgqxphittdatzknwkqw.supabase.co" 
 KEY_SUPABASE = "sb_publishable_zLiarara0IVVcwQm6oR2IQ_Sb0YOWTe"
- 
+
 try:
     supabase: Client = create_client(URL_SUPABASE, KEY_SUPABASE)
 except Exception as e:
@@ -67,20 +67,18 @@ if st.session_state['auth'] is None:
                     if res.data:
                         user_data = res.data[0]
                         if user_data['status'] == 'ativo':
-                            # Verificação de 1 ano com fuso horário corrigido
                             data_ap = datetime.fromisoformat(user_data['data_aprovacao'].replace('Z', '+00:00'))
                             if datetime.now(timezone.utc) > data_ap + timedelta(days=365):
-                                st.error("Seu acesso expirou (validade de 1 ano).")
+                                st.error("Acesso expirado (validade de 1 ano).")
                             else:
                                 st.session_state['auth'] = {"role": "user", "user": u}
                                 st.rerun()
                         else:
-                            st.warning(f"Seu acesso está: {user_data['status'].upper()}. Aguarde aprovação.")
+                            st.warning(f"Acesso: {user_data['status'].upper()}")
                     else:
                         st.error("E-mail ou senha incorretos.")
                 except Exception as e:
                     st.error(f"Erro de conexão: {e}")
-    
     with t2:
         ne = st.text_input("Novo E-mail")
         np_ = st.text_input("Nova Senha", type="password")
@@ -93,20 +91,18 @@ if st.session_state['auth'] is None:
     st.stop()
 
 # --- 4. INTERFACE PRINCIPAL ---
-st.title("⚡ Gestão de Risco de Arco Elétrico - NBR 17227:2025")
 st.sidebar.write(f"Conectado: **{st.session_state['auth']['user']}**")
 if st.sidebar.button("Sair"):
     st.session_state['auth'] = None
     st.rerun()
 
-# --- 5. PAINEL DO ADMINISTRADOR ---
 if st.session_state['auth']['role'] == "admin":
-    with st.expander("⚙️ Painel de Controle de Usuários", expanded=False):
+    with st.expander("⚙️ Painel de Controle de Usuários"):
         try:
             users = supabase.table("usuarios").select("*").execute().data
             if users:
                 for user in users:
-                    c1, c2, c3 = st.columns([2,1,1])
+                    c1, c2, c3 = st.columns()
                     status_icon = "🟢" if user['status'] == 'ativo' else "🟡"
                     c1.write(f"{status_icon} **{user['email']}**")
                     if user['status'] == 'pendente' and c2.button("Aprovar", key=user['email']):
@@ -118,7 +114,7 @@ if st.session_state['auth']['role'] == "admin":
         except Exception as e:
             st.error(f"Erro no painel: {e}")
 
-# --- 6. ABAS TÉCNICAS (CONTEÚDO DO APP) ---
+# --- 5. ABAS TÉCNICAS ---
 equipamentos = {
     "CCM 15 kV": {"gap": 152.0, "dist": 914.4, "dims": {"914,4 x 914,4 x 914,4": [914.4, 914.4, 914.4]}},
     "Conjunto de manobra 15 kV": {"gap": 152.0, "dist": 914.4, "dims": {"1143 x 762 x 762": [1143.0, 762.0, 762.0]}},
@@ -133,50 +129,32 @@ with tab1:
     st.subheader("Configuração")
     equip_sel = st.selectbox("Selecione o Equipamento:", list(equipamentos.keys()))
     info = equipamentos[equip_sel]
-    
     op_dim = list(info["dims"].keys()) + ["Inserir Dimensões Manualmente"]
     sel_dim = st.selectbox(f"Dimensões para {equip_sel}:", options=op_dim)
-    
     if sel_dim == "Inserir Dimensões Manualmente":
         c_m1, c_m2, c_m3 = st.columns(3)
-        alt = c_m1.number_input("Altura [A] (mm)", value=500.0)
-        larg = c_m2.number_input("Largura [L] (mm)", value=500.0)
-        prof = c_m3.number_input("Profundidade [P] (mm)", value=500.0)
-    else:
-        alt, larg, prof = info["dims"][sel_dim]
-
+        alt, larg, prof = c_m1.number_input("Altura [A]"), c_m2.number_input("Largura [L]"), c_m3.number_input("Profundidade [P]")
+    else: alt, larg, prof = info["dims"][sel_dim]
     st.markdown("<br>", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
-    with c1:
-        st.write("**GAP (mm)**")
-        st.write(f"## {info['gap']}")
-    with c2:
-        st.write("**Distância Trabalho (mm)**")
-        st.write(f"## {info['dist']}")
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    c4, c5, c6 = st.columns(3)
-    with c4: st.write(f"**Altura [A]:** {alt} mm")
-    with c5: st.write(f"**Largura [L]:** {larg} mm")
-    with c6: st.write(f"**Profundidade [P]:** {prof} mm")
+    c1.metric("GAP (mm)", f"{info['gap']}"); c2.metric("Distância (mm)", f"{info['dist']}")
+    r2c1, r2c2, r2c3 = st.columns(3)
+    r2c1.write(f"**Altura [A]:** {alt} mm"); r2c2.write(f"**Largura [L]:** {larg} mm"); r2c3.write(f"**Profundidade [P]:** {prof} mm")
 
 with tab2:
-    st.subheader("Parâmetros de Cálculo")
     col1, col2, col3 = st.columns(3)
     with col1:
-        v_oc = st.number_input("Tensão Voc (kV)", value=13.80, format="%.2f")
-        i_bf = st.number_input("Curto Ibf (kA)", value=4.85, format="%.2f")
-        tempo_t = st.number_input("Tempo T (ms)", value=488.0, format="%.2f")
+        v_oc, i_bf, tempo_t = st.number_input("Tensão Voc (kV)", 13.80), st.number_input("Curto Ibf (kA)", 4.85), st.number_input("Tempo T (ms)", 488.0)
     with col2:
-        gap_g = st.number_input("Gap G (mm)", value=float(info['gap']), format="%.2f")
-        dist_d = st.number_input("Distância D (mm)", value=float(info['dist']), format="%.2f")
-    
+        gap_g, dist_d = st.number_input("Gap G (mm)", float(info['gap'])), st.number_input("Distância D (mm)", float(info['dist']))
     if st.button("Calcular Resultados"):
-        # Coeficientes
         k_ia = {600: [-0.04287, 1.035, -0.083, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092], 2700: [0.0065, 1.001, -0.024, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729], 14300: [0.005795, 1.015, -0.011, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729]}
         k_en = {600: [0.753364, 0.566, 1.752636, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092, 0, -1.598, 0.957], 2700: [2.40021, 0.165, 0.354202, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.569, 0.9778], 14300: [3.825917, 0.11, -0.999749, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.568, 0.99]}
         ees = (alt/25.4 + larg/25.4) / 2.0; cf = -0.0003*ees**2 + 0.03441*ees + 0.4325
-        ia_sts = [calc_ia_step(i_bf, gap_g, k_ia[v]) for v in]; en_sts = [calc_en_step(ia, i_bf, gap_g, dist_d, tempo_t, k_en[v], cf) for ia, v in zip(ia_sts,)]; dl_sts = [calc_dla_step(ia, i_bf, gap_g, tempo_t, k_en[v], cf) for ia, v in zip(ia_sts,)]
+        # CORREÇÃO DA LINHA 179:
+        ia_sts = [calc_ia_step(i_bf, gap_g, k_ia[v]) for v in [600, 2700, 14300]]
+        en_sts = [calc_en_step(ia, i_bf, gap_g, dist_d, tempo_t, k_en[v], cf) for ia, v in zip(ia_sts, [600, 2700, 14300])]
+        dl_sts = [calc_dla_step(ia, i_bf, gap_g, tempo_t, k_en[v], cf) for ia, v in zip(ia_sts, [600, 2700, 14300])]
         ia_f = interpolar(v_oc, *ia_sts); e_cal = interpolar(v_oc, *en_sts)/4.184; dla_f = interpolar(v_oc, *dl_sts)
         cat = "CAT 2" if e_cal <= 8 else "CAT 4" if e_cal <= 40 else "EXTREMO RISCO"
         st.session_state['res'] = {"Ia": ia_f, "E_cal": e_cal, "DLA": dla_f, "Cat": cat, "Voc": v_oc, "Equip": equip_sel, "Gap": gap_g, "Dist": dist_d, "Dim": f"{alt}x{larg}x{prof}", "Ibf": i_bf, "Tempo": tempo_t}
@@ -193,5 +171,5 @@ with tab3:
             for text in [f"Equipamento: {r['Equip']}", f"Energia: {r['E_cal']:.4f} cal/cm²", f"Vestimenta: {r['Cat']}"]:
                 c.drawString(1.5*cm, y, text); y -= 0.6*cm
             c.save(); return buf.getvalue()
-        st.download_button("📩 Baixar Laudo PDF", export_pdf(), "laudo_arco.pdf", "application/pdf")
-    else: st.info("⚠️ Calcule para habilitar o relatório.")
+        st.download_button("📩 Baixar Laudo PDF", export_pdf(), "laudo.pdf", "application/pdf")
+    else: st.info("⚠️ Calcule primeiro.")
