@@ -1,60 +1,104 @@
-# --- 6. ABA 2: CÁLCULOS E RESULTADOS (RESTAURADA E CONECTADA) ---
-with tabs[1]:
-    col_c1, col_c2 = st.columns(2)
-    with col_c1:
-        v_oc = st.number_input("Tensão Voc (kV)", value=13.80, format="%.2f")
-        i_bf = st.number_input("Curto Ibf (kA)", value=4.85, format="%.2f")
-        t_ms = st.number_input("Tempo T (ms)", value=488.0, format="%.2f")
-    with col_c2:
-        # Busca o GAP e Distância definidos no equipamento da Aba 1
-        gap_g = st.number_input("Gap G (mm)", value=float(info['gap']), format="%.2f")
-        dist_d = st.number_input("Distância D (mm)", value=float(info['dist']), format="%.2f")
+import streamlit as st
+import numpy as np
+from datetime import datetime, timezone, timedelta
+from supabase import create_client, Client
+
+# --- 1. CONEXÃO SUPABASE ---
+URL_SUPABASE = "https://lfgqxphittdatzknwkqw.supabase.co" 
+KEY_SUPABASE = "sb_publishable_zLiarara0IVVcwQm6oR2IQ_Sb0YOWTe"
+
+try:
+    supabase: Client = create_client(URL_SUPABASE, KEY_SUPABASE)
+except Exception as e:
+    st.error(f"Erro no Banco de Dados: {e}")
+    st.stop()
+
+# --- 2. FUNÇÕES TÉCNICAS ---
+def calc_ia_step(ibf, g, k):
+    k1, k2, k3, k4, k5, k6, k7, k8, k9, k10 = k
+    log_base = k1 + k2 * np.log10(ibf) + k3 * np.log10(g)
+    poli = (k4*ibf**6 + k5*ibf**5 + k6*ibf**4 + k7*ibf**3 + k8*ibf**2 + k9*ibf + k10)
+    return 10**(log_base * poli)
+
+def calc_en_step(ia, ibf, g, d, t, k, cf):
+    k1, k2, k3, k4, k5, k6, k7, k8, k9, k10, k11, k12, k13 = k
+    poli_den = (k4*ibf**7 + k5*ibf**6 + k6*ibf**5 + k7*ibf**4 + k8*ibf**3 + k9*ibf**2 + k10*ibf)
+    termo_ia = (k3 * ia) / poli_den if poli_den != 0 else 0
+    exp = (k1 + k2*np.log10(g) + termo_ia + k11*np.log10(ibf) + k12*np.log10(d) + k13*np.log10(ia) + np.log10(1.0/cf))
+    return (12.552 / 50.0) * t * (10**exp)
+
+def calc_dla_step(ia, ibf, g, t, k, cf):
+    k1, k2, k3, k4, k5, k6, k7, k8, k9, k10, k11, k12, k13 = k
+    poli_den = (k4*ibf**7 + k5*ibf**6 + k6*ibf**5 + k7*ibf**4 + k8*ibf**3 + k9*ibf**2 + k10*ibf)
+    termo_ia = (k3 * ia) / poli_den if poli_den != 0 else 0
+    log_fixo = (k1 + k2*np.log10(g) + termo_ia + k11*np.log10(ibf) + k13*np.log10(ia) + np.log10(1.0/cf))
+    return 10**((np.log10(5.0 / ((12.552 / 50.0) * t)) - log_fixo) / k12)
+
+def interpolar(v, f600, f2700, f14300):
+    if v <= 0.6: return f600
+    if v <= 2.7: return f600 + (f2700 - f600) * (v - 0.6) / 2.1
+    return f2700 + (f14300 - f2700) * (v - 2.7) / 11.6
+
+# --- 3. LOGIN (SIMPLIFICADO PARA TESTE) ---
+st.set_page_config(page_title="Gestão de Arco Elétrico", layout="wide")
+if 'auth' not in st.session_state: st.session_state['auth'] = {"role": "admin", "user": "admin"} # Pular login para teste
+
+# --- 4. INTERFACE ---
+abas_nomes = ["Equipamento/Dimensões", "Cálculos e Resultados", "Relatório"]
+tabs = st.tabs(abas_nomes)
+
+# ABA 1: DIMENSÕES
+with tabs[0]:
+    equipamentos = {
+        "CCM 15 kV": {"gap": 152.0, "dist": 914.4, "dims": {"914,4 x 914,4 x 914,4": [914.4, 914.4, 914.4]}},
+        "CCM e painel BT": {"gap": 25.0, "dist": 457.2, "dims": {"355,6 x 304,8 x 203,2": [355.6, 304.8, 203.2]}},
+    }
+    equip_sel = st.selectbox("Equipamento:", list(equipamentos.keys()))
+    info = equipamentos[equip_sel]
+    sel_dim = st.selectbox("Dimensões:", list(info["dims"].keys()) + ["Manual"])
     
-    if st.button("Calcular Resultados"):
-        # Coeficientes Técnicos
-        k_ia = {
-            600: [-0.04287, 1.035, -0.083, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092], 
-            2700: [0.0065, 1.001, -0.024, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729], 
-            14300: [0.005795, 1.015, -0.011, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729]
-        }
-        k_en = {
-            600: [0.753364, 0.566, 1.752636, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092, 0, -1.598, 0.957], 
-            2700: [2.40021, 0.165, 0.354202, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.569, 0.9778], 
-            14300: [3.825917, 0.11, -0.999749, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.568, 0.99]
-        }
+    if sel_dim == "Manual":
+        c_m = st.columns(3)
+        alt = c_m[0].number_input("Altura (A)", value=500.0)
+        larg = c_m[1].number_input("Largura (L)", value=500.0)
+        prof = c_m[2].number_input("Profundidade (P)", value=500.0)
+    else:
+        alt, larg, prof = info["dims"][sel_dim]
+
+# ABA 2: CÁLCULOS
+with tabs[1]:
+    col1, col2 = st.columns(2)
+    v_oc = col1.number_input("Tensão (kV)", 13.8)
+    i_bf = col1.number_input("Ibf (kA)", 4.85)
+    t_ms = col2.number_input("Tempo (ms)", 488.0)
+    
+    if st.button("Calcular"):
+        # Coeficientes simplificados para o exemplo
+        k_ia = {600: [-0.042, 1.03, -0.08, 0,0,0,0,0,0,1.09], 2700: [0.006, 1.0, -0.02, 0,0,0,0,0,0,0.97], 14300: [0.005, 1.01, -0.01, 0,0,0,0,0,0,0.97]}
+        k_en = {600: [0.75, 0.56, 1.75, 0,0,0,0,0,0,1.09, 0, -1.59, 0.95], 2700: [2.4, 0.16, 0.35, 0,0,0,0,0,0,0.97, 0, -1.56, 0.97], 14300: [3.8, 0.11, -0.99, 0,0,0,0,0,0,0.97, 0, -1.56, 0.99]}
         
-        # Fator CF usando as dimensões (Manuais ou Automáticas) da Aba 1
         ees = (alt/25.4 + larg/25.4) / 2.0
         cf = -0.0003*ees**2 + 0.03441*ees + 0.4325
         
-        # Cálculos intermediários para os 3 níveis de tensão (0.6, 2.7 e 14.3 kV)
-        v_niveis = [0.6, 2.7, 14.3]
-        ia_n = [calc_ia_step(i_bf, gap_g, k_ia[int(v*1000 if v > 0.6 else 600)]) for v in v_niveis]
-        en_n = [calc_en_step(ia, i_bf, gap_g, dist_d, t_ms, k_en[int(v*1000 if v > 0.6 else 600)], cf) for ia, v in zip(ia_n, v_niveis)]
-        dl_n = [calc_dla_step(ia, i_bf, gap_g, t_ms, k_en[int(v*1000 if v > 0.6 else 600)], cf) for ia, v in zip(ia_n, v_niveis)]
+        # Cálculo em 3 pontos para interpolação
+        ia_n = [calc_ia_step(i_bf, info['gap'], k_ia[v]) for v in [600, 2700, 14300]]
+        en_n = [calc_en_step(ia, i_bf, info['gap'], info['dist'], t_ms, k_en[v], cf) for ia, v in zip(ia_n, [600, 2700, 14300])]
+        dl_n = [calc_dla_step(ia, i_bf, info['gap'], t_ms, k_en[v], cf) for ia, v in zip(ia_n, [600, 2700, 14300])]
         
-        # --- INTERPOLAÇÃO FINAL ---
-        ia_final = interpolar(v_oc, ia_n[0], ia_n[1], ia_n[2])
+        ia_f = interpolar(v_oc, ia_n[0], ia_n[1], ia_n[2])
         en_cal = interpolar(v_oc, en_n[0], en_n[1], en_n[2])
-        en_joule = en_cal * 4.184
-        dla_final = interpolar(v_oc, dl_n[0], dl_n[1], dl_n[2])
+        en_j = en_cal * 4.184
+        dla_f = interpolar(v_oc, dl_n[0], dl_n[1], dl_n[2])
         
-        # --- LÓGICA DE VESTIMENTA (EPI) ---
-        if en_cal <= 1.2: vest = "Mínimo: Roupa comum (Algodão)"
-        elif en_cal <= 4: vest = "Categoria 1 (Mín. 4 cal/cm²)"
-        elif en_cal <= 8: vest = "Categoria 2 (Mín. 8 cal/cm²)"
-        elif en_cal <= 25: vest = "Categoria 3 (Mín. 25 cal/cm²)"
-        elif en_cal <= 40: vest = "Categoria 4 (Mín. 40 cal/cm²)"
-        else: vest = "PERIGO: Acima de 40 cal/cm²"
-
-        # --- EXIBIÇÃO DOS RESULTADOS ---
-        st.markdown("---")
-        st.subheader("📊 Resultados Finais")
+        # Vestimenta
+        if en_cal <= 1.2: epi = "Algodão"
+        elif en_cal <= 8: epi = "CAT 2"
+        else: epi = "CAT 4"
+        
+        st.divider()
+        st.subheader("Resultados:")
         r1, r2, r3 = st.columns(3)
-        r1.metric("Iarc Final (kA)", f"{ia_final:.2f}")
+        r1.metric("Iarc Final", f"{ia_f:.2f} kA")
         r2.metric("Energia (cal/cm²)", f"{en_cal:.2f}")
-        r3.metric("Energia (J/cm²)", f"{en_joule:.2f}")
-        
-        r4, r5 = st.columns(2)
-        r4.metric("DLA (Fronteira mm)", f"{dla_final:.0f}")
-        r5.info(f"**Vestimenta Recomendada:**\n\n{vest}")
+        r3.metric("Energia (J/cm²)", f"{en_j:.2f}")
+        st.info(f"DLA: {dla_f:.0f} mm | Vestimenta: {epi}")
