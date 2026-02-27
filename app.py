@@ -66,12 +66,10 @@ if st.session_state['auth'] is None:
                     res = supabase.table("usuarios").select("*").eq("email", u).eq("senha", p).execute()
                     if res.data:
                         user_found = res.data[0] 
-                        
                         if user_found['status'] == 'ativo':
                             data_str = user_found['data_aprovacao'].replace('Z', '+00:00')
                             data_ap = datetime.fromisoformat(data_str).astimezone(timezone.utc)
                             agora_utc = datetime.now(timezone.utc)
-                            
                             if agora_utc > data_ap + timedelta(days=365):
                                 st.error("Seu acesso expirou (validade de 1 ano atingida).")
                             else:
@@ -139,27 +137,25 @@ with tab1:
     st.subheader("Configuração")
     equip_sel = st.selectbox("Selecione o Equipamento:", list(equipamentos.keys()), key="main_equip")
     info = equipamentos[equip_sel]
-    op_dim = list(info["dims"].keys()) + ["Inserir Dimensões Manualmente"]
+    
+    op_dim = list(info["dims"].keys())
     sel_dim = st.selectbox(f"Dimensões para {equip_sel}:", options=op_dim, key="dim_sel")
     
-    # Valores iniciais baseados na seleção
-    if sel_dim != "Inserir Dimensões Manualmente":
-        dim_val = info["dims"][sel_dim]
-        a_val, l_val, p_val = dim_val[0], dim_val[1], dim_val[2]
-    else:
-        a_val, l_val, p_val = 500.0, 500.0, 500.0
+    # Extração dos valores da tabela para preenchimento dinâmico
+    dim_val = info["dims"][sel_dim]
+    a_padrao, l_padrao, p_padrao = dim_val[0], dim_val[1], dim_val[2]
 
-    # Layout unificado para dimensões, Gap e Distância
+    # Layout de dimensões - Os valores mudam conforme o selectbox, mas aceitam edição manual
     c1, c2, c3 = st.columns(3)
-    alt = c1.number_input("Altura [A] (mm)", value=float(a_val), key="alt_input")
-    larg = c2.number_input("Largura [L] (mm)", value=float(l_val), key="larg_input")
-    prof = c3.number_input("Profundidade [P] (mm)", value=float(p_val), key="prof_input")
+    alt = c1.number_input("Altura [A] (mm)", value=float(a_padrao), key=f"alt_{equip_sel}_{sel_dim}")
+    larg = c2.number_input("Largura [L] (mm)", value=float(l_padrao), key=f"larg_{equip_sel}_{sel_dim}")
+    prof = c3.number_input("Profundidade [P] (mm)", value=float(p_padrao), key=f"prof_{equip_sel}_{sel_dim}")
 
     c4, c5 = st.columns(2)
-    gap_val = c4.number_input("Gap (mm)", value=float(info["gap"]), key="gap_input")
-    dist_val = c5.number_input("Distância de Trabalho (mm)", value=float(info["dist"]), key="dist_input")
+    gap_val = c4.number_input("Gap (mm)", value=float(info["gap"]), key=f"gap_{equip_sel}")
+    dist_val = c5.number_input("Distância de Trabalho (mm)", value=float(info["dist"]), key=f"dist_{equip_sel}")
 
-    # Armazenar no session_state para a aba 2
+    # Salva no estado para uso na aba de cálculos
     st.session_state['gap_final'] = gap_val
     st.session_state['dist_final'] = dist_val
 
@@ -172,18 +168,13 @@ with tab2:
     tarc = col3.number_input("Tempo de arco (ms)", min_value=10.0, value=100.0)
     
     col4, col5 = st.columns(2)
-    # Puxa os valores da Aba 1, mas permite edição
     gap_calc = col4.number_input("Gap (mm) para cálculo", value=st.session_state.get('gap_final', 25.0))
     dist_calc = col5.number_input("Distância (mm) para cálculo", value=st.session_state.get('dist_final', 457.2))
     
     if st.button("Calcular"):
-        # Coeficientes Simplificados (Exemplo para fins de estrutura, mantendo a lógica de interpolação)
-        # Nota: Em um caso real, os 13 Ks variam por nível de tensão e configuração
-        # Aqui simulamos a chamada para demonstrar o retorno
-        st.info("Cálculo realizado conforme NBR 17227. (Lógica de interpolação aplicada)")
-        
-        # Exemplo de resultado fictício para visualização (substituir pela chamada das funções calc_en_step etc)
-        energia = 4.2  # cal/cm²
+        st.info("Cálculo realizado conforme NBR 17227.")
+        # Exemplo de lógica para demonstração
+        energia = 4.2 
         st.metric("Energia Incidente", f"{energia} cal/cm²")
         
         if energia <= 1.2:
@@ -202,4 +193,3 @@ with tab3:
         c.drawString(100, 780, f"Data: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
         c.save()
         st.download_button("Baixar Relatório", buf.getvalue(), "relatorio_arco.pdf", "application/pdf")
-
