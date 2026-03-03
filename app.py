@@ -8,8 +8,8 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER, TA_LEFT, TA_RIGHT
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether
+from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER, TA_LEFT
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether, ListFlowable, ListItem
 from reportlab.pdfgen import canvas
 
 # --- 1. CONFIGURAÇÃO E CONEXÃO ---
@@ -124,7 +124,6 @@ with tab2:
         for d in np.linspace(dist_f, dla, 5):
             e_sts_temp = [calc_en_step(ia, i_bf, gap_f, d, t_arc, k_en[v], cf) for ia, v in zip(ia_sts, k_v)]
             e_v = interpolar(v_oc, *e_sts_temp) / 4.184
-            # Para alinhar à esquerda no Streamlit, transformamos em string
             sens_list.append([str(round(d, 1)), str(round(e_v, 4)), definir_vestimenta(e_v)])
         
         e_trab_cal = float(sens_list[0][1])
@@ -135,19 +134,12 @@ with tab2:
         
         st.divider()
         st.subheader("Resultados do Estudo")
-        
-        # Colunas de largura reduzida (1:2 para a tabela não ocupar a tela toda)
-        col_tab, _ = st.columns([1, 1.5])
-        
-        with col_tab:
+        c_tab, _ = st.columns([1, 1.5])
+        with c_tab:
             st.metric("Corrente de Arco (Iarc)", f"{i_arc:.3f} kA")
             st.metric("Fronteira de Arco (DLA)", f"{dla:.1f} mm")
-            
             st.write("#### Distância X Energia Incidente")
-            # Exibe a tabela alinhada à esquerda
-            df_display = pd.DataFrame(sens_list, columns=["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"])
-            st.table(df_display)
-
+            st.table(pd.DataFrame(sens_list, columns=["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]))
             st.metric("Energia Incidente", f"{e_trab_cal:.4f} cal/cm²")
             st.metric("Energia Incidente", f"{e_trab_cal*4.184:.2f} J/cm²")
             st.info(f"**Vestimenta (Conforme Cálculo):** {v_norma}"); st.success(f"**Vestimenta (Princípio de Segurança Normativo):** {v_seguranca}")
@@ -163,8 +155,9 @@ with tab3:
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2.5*cm, leftMargin=2.5*cm, topMargin=2.5*cm, bottomMargin=2.5*cm)
             styles = getSampleStyleSheet()
-            style_just = ParagraphStyle(name='J', parent=styles['Normal'], alignment=TA_JUSTIFY, fontSize=11, leading=16)
-            style_h2 = ParagraphStyle(name='H2', parent=styles['Heading2'], fontSize=13, leading=18, spaceBefore=12, spaceAfter=8)
+            style_just = ParagraphStyle(name='J', parent=styles['Normal'], alignment=TA_JUSTIFY, fontSize=11, leading=16.5)
+            style_h2 = ParagraphStyle(name='H2', parent=styles['Heading2'], fontSize=13, leading=18, spaceBefore=15, spaceAfter=10)
+            style_list = ParagraphStyle(name='L', parent=styles['Normal'], fontSize=11, leading=14, leftIndent=20)
 
             class CustomCanvas(canvas.Canvas):
                 def __init__(self, *args, **kwargs):
@@ -194,30 +187,48 @@ with tab3:
             elements.append(t_toc)
             elements.append(PageBreak())
 
-            # CONTEÚDO
+            # 1. MEMORIAL DE CÁLCULO
             elements.append(Paragraph("<b>1. MEMORIAL DE CÁLCULO (NBR 17227:2025)</b>", style_h2))
-            elements.append(Paragraph("A metodologia aplicada segue a norma NBR 17227:2025 para painéis em espaços confinados. O estudo visa determinar a energia incidente para mitigação de riscos elétricos.", style_just))
-            elements.append(Paragraph("<b>2. ANÁLISE DO RESULTADO E PARÂMETROS</b>", style_h2))
-            elements.append(Paragraph(f"• Iarc: <b>{r['I']:.3f} kA</b><br/>• Energia Incidente: <b>{r['E_cal']:.4f} cal/cm²</b> ({r['E_joule']:.2f} J/cm²)<br/>• Fronteira de Arco (DLA): <b>{r['D']:.1f} mm</b><br/>• Gap: <b>{r['Gap']:.1f} mm</b><br/>• Distância de Trabalho: <b>{r['Dist']:.1f} mm</b>", style_just))
-            elements.append(Paragraph("<b>3. RECOMENDAÇÃO E JUSTIFICATIVA TÉCNICA</b>", style_h2))
-            elements.append(Paragraph(f"Cálculo nominal: {r['V_norma']}. Recomendação final: <b>{r['V_seguranca']}</b>. <br/><b>Justificativa:</b> Gestão de riscos baseada no Princípio ALARA.", style_just))
-            elements.append(Paragraph("<b>4. EQUIPAMENTOS DE PROTEÇÃO (EPI) COMPLEMENTARES</b>", style_h2))
-            elements.append(Paragraph("Obrigatório: Protetor facial ATPV, Balaclava ignífuga, Luvas isolantes e calçado de segurança.", style_just))
+            elements.append(Paragraph("A metodologia aplicada segue rigorosamente a norma <b>NBR 17227:2025</b> para painéis em espaços confinados. Este estudo técnico fundamenta-se em modelos de interpolação polinomial e determinação de Corrente de Arco ($I_{arc}$) via regressões validadas para as geometrias reais dos equipamentos. O cálculo da Energia Incidente ($E_{cal}$) considera o ajuste dinâmico do fator de borda ($C_f$), refletindo as dimensões volumétricas do invólucro para assegurar que a exposição residual do trabalhador permaneça abaixo do limiar crítico de queimadura de segundo grau (1,2 cal/cm²).", style_just))
 
-            # BLOCO FINAL (Tabela alinhada à esquerda no PDF)
+            # 2. ANÁLISE DO RESULTADO
+            elements.append(Paragraph("<b>2. ANÁLISE DO RESULTADO E PARÂMETROS</b>", style_h2))
+            elements.append(Paragraph(f"• Corrente de Arco: <b>{r['I']:.3f} kA</b><br/>• Energia Incidente: <b>{r['E_cal']:.4f} cal/cm²</b> ({r['E_joule']:.2f} J/cm²)<br/>• Fronteira de Arco (DLA): <b>{r['D']:.1f} mm</b><br/>• Gap: <b>{r['Gap']:.1f} mm</b><br/>• Distância de Trabalho: <b>{r['Dist']:.1f} mm</b>", style_just))
+
+            # 3. RECOMENDAÇÃO E JUSTIFICATIVA
+            elements.append(Paragraph("<b>3. RECOMENDAÇÃO E JUSTIFICATIVA TÉCNICA</b>", style_h2))
+            elements.append(Paragraph(f"Pela classificação estrita da norma, a vestimenta resultante do cálculo nominal seria a <b>{r['V_norma']}</b>. Contudo, este laudo estabelece a utilização obrigatória da vestimenta <b>{r['V_seguranca']}</b>.", style_just))
+            elements.append(Spacer(1, 0.3*cm))
+            elements.append(Paragraph("<b>Justificativa:</b> Esta recomendação fundamenta-se na gestão estratégica de riscos e na aplicação do Princípio ALARA (*As Low As Reasonably Achievable*). Variações no tempo de atuação da proteção (decorrentes de envelhecimento mecânico de disjuntores) ou no posicionamento antropométrico do operador durante a execução do serviço podem elevar a energia incidente real acima dos limites da categoria nominal. Assim, adota-se um fator de segurança conservador para mitigar incertezas de campo, garantindo proteção efetiva contra o limiar de queimadura mesmo sob condições operacionais adversas.", style_just))
+
+            # 4. EPIs COMPLEMENTARES
+            elements.append(Paragraph("<b>4. EQUIPAMENTOS DE PROTEÇÃO (EPI) COMPLEMENTARES</b>", style_h2))
+            epi_items = [
+                "Protetor Facial contra Arco Elétrico com classificação ATPV adequada;",
+                "Balaclava Ignífuga para proteção integral de cabeça e pescoço;",
+                "Luvas Isolantes de Borracha acompanhadas de luvas de cobertura em couro;",
+                "Calçado de Segurança sem componentes metálicos expostos;",
+                "Proteção Ocular e Auditiva (Óculos de segurança e protetores auriculares)."
+            ]
+            for item in epi_items:
+                elements.append(Paragraph(f"• {item}", style_list))
+            elements.append(Spacer(1, 0.5*cm))
+
+            # 5. TABELA E 6. DISPOSIÇÕES FINAIS (EM BLOCO ÚNICO)
             t_sens = Table([["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]] + r['Sens'], colWidths=[5*cm]*3)
-            t_sens.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.lightgrey),('ALIGN',(0,0),(-1,-1),'LEFT'),('GRID',(0,0),(-1,-1),0.5,colors.grey),('FONTSIZE',(0,0),(-1,-1), 9),('BOTTOMPADDING',(0,0),(-1,-1), 4),('TOPPADDING',(0,0),(-1,-1), 4)]))
+            t_sens.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.lightgrey),('ALIGN',(0,0),(-1,-1),'LEFT'),('GRID',(0,0),(-1,-1),0.5,colors.grey),('FONTSIZE',(0,0),(-1,-1), 9),('BOTTOMPADDING',(0,0),(-1,-1), 4)]))
             
-            elements.append(KeepTogether([
+            final_elements = [
                 Paragraph("<b>5. TABELA DE DISTÂNCIA X ENERGIA INCIDENTE</b>", style_h2),
                 t_sens,
-                Spacer(1, 0.4*cm),
+                Spacer(1, 0.5*cm),
                 Paragraph("<b>6. DISPOSIÇÕES FINAIS E NR-10</b>", style_h2),
-                Paragraph("Conforme NR-10, o laudo recomenda o uso de vestimentas com CA válido.", style_just),
-                Spacer(1, 1.5*cm),
+                Paragraph("Este estudo atende integralmente às exigências da <b>NR-10</b>. A eficácia das medidas de proteção aqui descritas está condicionada ao uso de EPIs com Certificado de Aprovação (CA) válido e à manutenção periódica das proteções do sistema elétrico analisado.", style_just),
+                Spacer(1, 2*cm),
                 Paragraph(f"________________________________________________<br/><b>Engenheiro Eletricista - CREA {uf_c}/{num_c}</b>", ParagraphStyle(name='Sig', parent=styles['Normal'], alignment=TA_CENTER))
-            ]))
+            ]
+            elements.append(KeepTogether(final_elements))
 
             doc.build(elements, canvasmaker=CustomCanvas); return buffer.getvalue()
 
-        st.download_button("📩 Baixar Relatório Profissional (PDF)", gerar_pdf_profissional(), f"Relatorio_Tecnico_{cliente}.pdf")
+        st.download_button("📩 Baixar Relatório Profissional (PDF)", gerar_pdf_profissional(), f"Relatorio_Arco_{cliente}.pdf")
