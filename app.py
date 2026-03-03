@@ -141,20 +141,21 @@ with tab2:
         
         st.divider()
         st.subheader("Resultados do Estudo")
-        
-        col_res_v = st.columns([1, 2])
-        with col_res_v[0]:
-            st.metric("Corrente de Arco (Iarc)", f"{i_arc:.3f} kA")
-            st.metric("Fronteira de Arco (DLA)", f"{dla:.1f} mm")
-            st.metric("Energia Incidente", f"{e_trab_cal:.4f} cal/cm²")
-            st.metric("Energia Incidente", f"{e_trab_joule:.2f} J/cm²")
-            
-            st.info(f"**Vestimenta (Conforme Cálculo):** {v_norma}")
-            st.success(f"**Vestimenta (Princípio de Segurança Normativo):** {v_seguranca}")
 
-        with col_res_v[1]:
-            st.write("#### Sensibilidade de Afastamento")
-            st.table(pd.DataFrame(sens_list, columns=["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]))
+        # 1. Métricas de Corrente e Fronteira
+        st.metric("Corrente de Arco (Iarc)", f"{i_arc:.3f} kA")
+        st.metric("Fronteira de Arco (DLA)", f"{dla:.1f} mm")
+        
+        # 2. Tabela de Sensibilidade (Posicionada antes das vestimentas)
+        st.write("#### Distância X Energia Incidente")
+        st.table(pd.DataFrame(sens_list, columns=["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]))
+
+        # 3. Informações de Energia e Vestimentas (Abaixo da tabela)
+        st.metric("Energia Incidente", f"{e_trab_cal:.4f} cal/cm²")
+        st.metric("Energia Incidente", f"{e_trab_joule:.2f} J/cm²")
+        
+        st.info(f"**Vestimenta (Conforme Cálculo):** {v_norma}")
+        st.success(f"**Vestimenta (Princípio de Segurança Normativo):** {v_seguranca}")
 
 with tab3:
     if 'res' in st.session_state:
@@ -193,7 +194,7 @@ with tab3:
                 f"Considerando o princípio de segurança normativo e o limiar de queimadura, recomenda-se <b>{r['V_seguranca']}</b>.", style_just))
 
             elementos.append(Spacer(1, 0.5*cm))
-            elementos.append(Paragraph("<b>3. TABELA DE SENSIBILIDADE</b>", styles['Heading2']))
+            elementos.append(Paragraph("<b>3. TABELA DE DISTÂNCIA X ENERGIA INCIDENTE</b>", styles['Heading2']))
             data_tab = [["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]] + r['Sens']
             t = Table(data_tab, colWidths=[5*cm, 5*cm, 5*cm])
             t.setStyle(TableStyle([
