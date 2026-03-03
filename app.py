@@ -90,9 +90,9 @@ tab1, tab2, tab3 = st.tabs(["Equipamento/Dimensões", "Cálculos e Resultados", 
 
 with tab1:
     st.subheader("Configuração do Equipamento")
-    equip_sel = st.selectbox("Selecione o Equipamento (Tab 3):", list(equip_data.keys()))
+    equip_sel = st.selectbox("Selecione o Equipamento:", list(equip_data.keys()))
     info = equip_data[equip_sel]
-    sel_dim = st.selectbox(f"Selecione o Invólucro (Tab 1):", list(info["dims"].keys()))
+    sel_dim = st.selectbox(f"Selecione o Invólucro:", list(info["dims"].keys()))
     v_a, v_l, v_p, v_s = info["dims"][sel_dim]
     
     c1, c2, c3, c4 = st.columns(4)
@@ -125,7 +125,8 @@ with tab2:
             e_v = interpolar(v_oc, *e_sts_temp) / 4.184
             sens_list.append([round(d, 1), round(e_v, 4), definir_vestimenta(e_v)])
         
-        e_trab_cal, v_norma = sens_list[0][1], definir_vestimenta(sens_list[0][1])
+        e_trab_cal = sens_list[0][1]
+        v_norma = definir_vestimenta(e_trab_cal)
         v_seguranca = "CAT 2" if (1.2 < e_trab_cal <= 4) else v_norma
         
         st.session_state['res'] = {"I": i_arc, "D": dla, "E_cal": e_trab_cal, "E_joule": e_trab_cal*4.184, "V_norma": v_norma, "V_seguranca": v_seguranca, "Sens": sens_list, "Equip": equip_sel, "Gap": gap_f, "Dist": dist_f}
@@ -149,31 +150,39 @@ with tab3:
 
         def gerar_pdf_profissional():
             buffer = io.BytesIO()
-            # Margens reduzidas para 1.5cm para ganhar espaço
+            # Margens compactas para garantir tudo em uma página
             doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=1.5*cm, leftMargin=1.5*cm, topMargin=1.5*cm, bottomMargin=1.5*cm)
             styles = getSampleStyleSheet()
-            style_just = ParagraphStyle(name='J', parent=styles['Normal'], alignment=TA_JUSTIFY, leading=11, fontSize=9)
-            style_title = ParagraphStyle(name='T', parent=styles['Title'], alignment=TA_CENTER, fontSize=12, spaceAfter=10)
-            style_h2 = ParagraphStyle(name='H2', parent=styles['Heading2'], fontSize=10, spaceBefore=6, spaceAfter=4)
+            style_just = ParagraphStyle(name='J', parent=styles['Normal'], alignment=TA_JUSTIFY, leading=13, fontSize=10)
+            style_title = ParagraphStyle(name='T', parent=styles['Title'], alignment=TA_CENTER, fontSize=14, spaceAfter=8)
+            style_h2 = ParagraphStyle(name='H2', parent=styles['Heading2'], fontSize=11, spaceBefore=6, spaceAfter=4)
             elements = []
 
             elements.append(Paragraph("<b>RELATÓRIO TÉCNICO DE CÁLCULO DE ENERGIA INCIDENTE</b>", style_title))
-            elements.append(Paragraph(f"<b>Local:</b> {local_eq} | <b>Equipamento:</b> {r['Equip']} | <b>Data:</b> {datetime.now().strftime('%d/%m/%Y')}", styles['Normal']))
+            elements.append(Paragraph(f"<b>Local:</b> {local_eq}", styles['Normal']))
+            elements.append(Paragraph(f"<b>Equipamento:</b> {r['Equip']}", styles['Normal']))
+            elements.append(Paragraph(f"<b>Data de Emissão:</b> {datetime.now().strftime('%d/%m/%Y')}", styles['Normal']))
+            elements.append(Spacer(1, 0.4*cm))
+
+            elements.append(Paragraph("<b>1. MEMORIAL DE CÁLCULO (NBR 17227:2025)</b>", style_h2))
+            elements.append(Paragraph("A metodologia aplicada segue a norma <b>NBR 17227:2025</b>. Foram executados cálculos de Corrente de Arco via interpolação polinomial e determinação da Energia Incidente com ajuste do fator de borda para a geometria real do invólucro. O objetivo é garantir que a energia que atinge a pele do trabalhador seja inferior a 1,2 cal/cm² (limite de queimadura incurável de 2º grau).", style_just))
+
+            elements.append(Paragraph("<b>2. ANÁLISE DO RESULTADO E PARÂMETROS</b>", style_h2))
+            elements.append(Paragraph(f"• Corrente de Arco: <b>{r['I']:.3f} kA</b><br/>• Energia Incidente: <b>{r['E_cal']:.4f} cal/cm²</b> ({r['E_joule']:.2f} J/cm²)<br/>• Fronteira de Arco (DLA): <b>{r['D']:.1f} mm</b><br/>• Gap: <b>{r['Gap']:.1f} mm</b><br/>• Distância de Trabalho: <b>{r['Dist']:.1f} mm</b>", style_just))
             
-            elements.append(Paragraph("<b>1. MEMORIAL DE CÁLCULO E PARÂMETROS (NBR 17227:2025)</b>", style_h2))
-            elements.append(Paragraph(f"Metodologia NBR 17227. Parâmetros: Iarc: {r['I']:.3f} kA | Energia: {r['E_cal']:.4f} cal/cm² ({r['E_joule']:.2f} J/cm²) | DLA: {r['D']:.1f} mm | Gap: {r['Gap']:.1f} mm | Dist. Trabalho: {r['Dist']:.1f} mm.", style_just))
+            elements.append(Paragraph("<b>3. RECOMENDAÇÃO DE VESTIMENTA E JUSTIFICATIVA TÉCNICA</b>", style_h2))
+            elements.append(Paragraph(f"Pela classificação nominal do cálculo, a vestimenta requerida é <b>{r['V_norma']}</b>. Contudo, a recomendação final de proteção é <b>{r['V_seguranca']}</b>.", style_just))
+            elements.append(Paragraph("<b>Justificativa:</b> Esta recomendação fundamenta-se na gestão de riscos e margem de segurança operacional (Princípio ALARA). Considerando que variações no tempo de atuação da proteção ou no posicionamento do operador podem elevar a energia real acima da capacidade nominal, adota-se um fator de segurança conservador. A utilização de uma categoria superior quando o cálculo aproxima-se do limite de queima de 2º grau garante um incremento significativo na proteção sem prejuízo à ergonomia do trabalhador.", style_just))
 
-            elements.append(Paragraph("<b>2. RECOMENDAÇÃO E JUSTIFICATIVA TÉCNICA</b>", style_h2))
-            elements.append(Paragraph(f"Cálculo nominal: <b>{r['V_norma']}</b>. Recomendação final: <b>{r['V_seguranca']}</b>. Justificativa: Adoção do Princípio ALARA para mitigar incertezas de tempo de atuação da proteção e variações de campo, garantindo energia residual < 1,2 cal/cm².", style_just))
+            elements.append(Paragraph("<b>4. EQUIPAMENTOS DE PROTEÇÃO (EPI) COMPLEMENTARES</b>", style_h2))
+            elements.append(Paragraph("Além da vestimenta retardante de chama (FR/AR) na categoria recomendada, são obrigatórios:<br/>• <b>Protetor Facial contra Arco Elétrico:</b> com classificação ATPV adequada;<br/>• <b>Balaclava Ignífuga:</b> proteção completa de cabeça e pescoço;<br/>• <b>Luvas Isolantes de Borracha:</b> com luvas de cobertura em couro;<br/>• <b>Calçado de Segurança:</b> sem componentes metálicos expostos;<br/>• <b>Proteção Ocular e Auditiva:</b> óculos de segurança e protetores auriculares.", style_just))
 
-            elements.append(Paragraph("<b>3. EPIs COMPLEMENTARES OBRIGATÓRIOS</b>", style_h2))
-            elements.append(Paragraph("Além da vestimenta FR/AR: Protetor facial ATPV adequado, Balaclava ignífuga, Luvas isolantes com cobertura, Calçado sem metal e proteção ocular/auditiva.", style_just))
-
-            elements.append(Paragraph("<b>4. TABELA DE DISTÂNCIA X ENERGIA INCIDENTE</b>", style_h2))
-            data = [["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]] + r['Sens']
-            t = Table(data, colWidths=[5*cm, 5*cm, 5*cm], repeatRows=1)
-            t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.lightgrey), ('ALIGN',(0,0),(-1,-1),'CENTER'), ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'), ('GRID',(0,0),(-1,-1),0.5,colors.grey), ('FONTSIZE',(0,0),(-1,-1),8)]))
-            elements.append(KeepTogether(t)) # Garante que a tabela não quebre sozinha
+            # BLOCO DA TABELA (KeepTogether garante a unicidade)
+            elements.append(Paragraph("<b>5. TABELA DE DISTÂNCIA X ENERGIA INCIDENTE</b>", style_h2))
+            data_tab = [["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]] + r['Sens']
+            t = Table(data_tab, colWidths=[5.5*cm, 5.5*cm, 5.5*cm])
+            t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('ALIGN', (0,0), (-1,-1), 'CENTER'), ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
+            elements.append(KeepTogether(t))
 
             elements.append(Spacer(1, 0.8*cm))
             elements.append(Paragraph("________________________________________________", styles['Normal']))
