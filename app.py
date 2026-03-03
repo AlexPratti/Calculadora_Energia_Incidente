@@ -189,7 +189,16 @@ with tab3:
 
             # 1. MEMORIAL DE CÁLCULO
             elements.append(Paragraph("<b>1. MEMORIAL DE CÁLCULO (NBR 17227:2025)</b>", style_h2))
-            elements.append(Paragraph("A metodologia aplicada segue rigorosamente a norma <b>NBR 17227:2025</b> para painéis em espaços confinados. Este estudo técnico fundamenta-se em modelos de interpolação polinomial e determinação de Corrente de Arco ($I_{arc}$) via regressões validadas para as geometrias reais dos equipamentos. O cálculo da Energia Incidente ($E_{cal}$) considera o ajuste dinâmico do fator de borda ($C_f$), refletindo as dimensões volumétricas do invólucro para assegurar que a exposição residual do trabalhador permaneça abaixo do limiar crítico de queimadura de segundo grau (1,2 cal/cm²).", style_just))
+            
+            # AJUSTE SOLICITADO: REMOÇÃO DE LATEX E SÍMBOLO DO FATOR DE BORDA
+            texto_memorial = (
+                "A metodologia aplicada segue rigorosamente a norma <b>NBR 17227:2025</b> para painéis em espaços confinados. "
+                "Este estudo técnico fundamenta-se em modelos de interpolação polinomial e determinação de Corrente de Arco (Iarc) "
+                "via regressões validadas para as geometrias reais dos equipamentos. O cálculo da Energia Incidente (Ecal) considera "
+                "o ajuste dinâmico do fator de borda, refletindo as dimensões volumétricas do invólucro para assegurar que a "
+                "exposição residual do trabalhador permaneça abaixo do limiar crítico de queimadura de segundo grau (1,2 cal/cm²)."
+            )
+            elements.append(Paragraph(texto_memorial, style_just))
 
             # 2. ANÁLISE DO RESULTADO
             elements.append(Paragraph("<b>2. ANÁLISE DO RESULTADO E PARÂMETROS</b>", style_h2))
