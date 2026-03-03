@@ -62,15 +62,16 @@ if st.session_state['auth'] is None:
                 except: st.error("Erro de conexão.")
     st.stop()
 
-# --- 4. BASE DE DADOS (TABELAS 1 E 3) ---
+# --- 4. BASE DE DADOS FIEL À TABELA 1 DA IMAGEM ---
 equip_data = {
     "CCM 15 kV": {"gap": 152.0, "dist": 914.4, "dims": {"(A) 914,4 x (L) 914,4 x (P) 914,4": [914.4, 914.4, 914.4, ""]}},
     "Conjunto de manobra 15 kV": {"gap": 152.0, "dist": 914.4, "dims": {"(A) 1143 x (L) 762 x (P) 762": [1143.0, 762.0, 762.0, ""]}},
     "CCM 5 kV": {"gap": 104.0, "dist": 914.4, "dims": {"(A) 660,4 x (L) 660,4 x (P) 660,4": [660.4, 660.4, 660.4, ""]}},
     "Conjunto de manobra 5 kV": {"gap": 104.0, "dist": 914.4, "dims": {"(A) 914,4 x (L) 914,4 x (P) 914,4": [914.4, 914.4, 914.4, ""], "(A) 1143 x (L) 762 x (P) 762": [1143.0, 762.0, 762.0, ""]}},
     "CCM e painel raso de BT": {"gap": 25.0, "dist": 457.2, "dims": {"(A) 355,6 x (L) 304,8 x (P) ≤ 203,2": [355.6, 304.8, 203.2, "≤"]}},
-    "CCM e painel típico de BT": {"gap": 25.0, "dist": 457.2, "dims": {"(A) 508,0 x (L) 508,0 x (P) > 508,0": [508.0, 508.0, 508.0, ">"]}},
-    "Caixa de junção de cabos": {"gap": 25.0, "dist": 457.2, "dims": {"(A) 355,6 x (L) 304,8 x (P) ≤ 203,2": [355.6, 304.8, 203.2, "≤"], "(A) 508,0 x (L) 508,0 x (P) ≤ 203,2": [508.0, 508.0, 203.2, "≤"]}}
+    "CCM e painel típico de BT": {"gap": 25.0, "dist": 457.2, "dims": {"(A) 355,6 x (L) 304,8 x (P) > 203,2": [355.6, 304.8, 203.2, ">"]}},
+    "Conjunto de manobra BT": {"gap": 32.0, "dist": 457.2, "dims": {"(A) 508,0 x (L) 508,0 x (P) 508,0": [508.0, 508.0, 508.0, ""]}},
+    "Caixa de junção de cabos": {"gap": 13.0, "dist": 457.2, "dims": {"(A) 355,6 x (L) 304,8 x (P) ≤ 203,2": [355.6, 304.8, 203.2, "≤"], "(A) 355,6 x (L) 304,8 x (P) > 203,2": [355.6, 304.8, 203.2, ">"]}}
 }
 
 # --- 5. INTERFACE ---
@@ -79,13 +80,11 @@ tab1, tab2, tab3 = st.tabs(["Equipamento/Dimensões", "Cálculos e Resultados", 
 with tab1:
     st.subheader("Configuração do Equipamento")
     
-    # Função para atualizar dimensões de forma segura (sem KeyError)
     def update_safe():
         e_info = equip_data[st.session_state.main_equip_sel]
-        # Se a dimensão atual não existe no novo equipamento, pega a primeira disponível
+        # Garante que a dimensão selecionada pertença ao novo equipamento
         if st.session_state.dim_sel_box not in e_info["dims"]:
-            new_dim = list(e_info["dims"].keys())[0]
-            st.session_state.dim_sel_box = new_dim
+            st.session_state.dim_sel_box = list(e_info["dims"].keys())[0]
         
         val_a, val_l, val_p, val_sinal = e_info["dims"][st.session_state.dim_sel_box]
         st.session_state.manual_alt = float(val_a)
@@ -95,11 +94,11 @@ with tab1:
         st.session_state.manual_dist = float(e_info["dist"])
         st.session_state.manual_sinal = val_sinal
 
-    equip_sel = st.selectbox("Selecione o Equipamento (Tab. 3):", list(equip_data.keys()), key="main_equip_sel", on_change=update_safe)
+    equip_sel = st.selectbox("Selecione o Equipamento:", list(equip_data.keys()), key="main_equip_sel", on_change=update_safe)
     info = equip_data[equip_sel]
     sel_dim = st.selectbox(f"Dimensões para {equip_sel}:", list(info["dims"].keys()), key="dim_sel_box", on_change=update_safe)
     
-    # Inicialização forçada na primeira execução
+    # Inicialização forçada
     if "manual_alt" not in st.session_state:
         v_a, v_l, v_p, v_s = info["dims"][sel_dim]
         st.session_state.manual_alt, st.session_state.manual_larg, st.session_state.manual_prof = float(v_a), float(v_l), float(v_p)
@@ -126,13 +125,14 @@ with tab2:
     t_arc = col3.number_input("Tempo T (ms)", 10.0, 5000.0, 488.0, key="calc_tarc")
     
     if st.button("Calcular Resultados", key="btn_exec_calc"):
+        k_v = [600, 2700, 14300]
         k_ia = {600: [-0.04287, 1.035, -0.083, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092], 2700: [0.0065, 1.001, -0.024, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729], 14300: [0.005795, 1.015, -0.011, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729]}
         k_en = {600: [0.753364, 0.566, 1.752636, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092, 0, -1.598, 0.957], 2700: [2.40021, 0.165, 0.354202, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.569, 0.9778], 14300: [3.825917, 0.11, -0.999749, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.568, 0.99]}
         
         ees = (st.session_state.manual_alt/25.4 + st.session_state.manual_larg/25.4) / 2.0
         cf = -0.0003*ees**2 + 0.03441*ees + 0.4325
-        ia_sts = [calc_ia_step(i_bf, st.session_state.manual_gap, k_ia[v]) for v in [600, 2700, 14300]]
-        en_sts = [calc_en_step(ia, i_bf, st.session_state.manual_gap, st.session_state.manual_dist, t_arc, k_en[v], cf) for ia, v in zip(ia_sts, [600, 2700, 14300])]
+        ia_sts = [calc_ia_step(i_bf, st.session_state.manual_gap, k_ia[v]) for v in k_v]
+        en_sts = [calc_en_step(ia, i_bf, st.session_state.manual_gap, st.session_state.manual_dist, t_arc, k_en[v], cf) for ia, v in zip(ia_sts, k_v)]
         
         e_cal = interpolar(v_oc, *en_sts) / 4.184
         cat = "CAT 2" if e_cal <= 8 else "CAT 4" if e_cal <= 40 else "EXTREMO RISCO"
@@ -144,10 +144,12 @@ with tab2:
 with tab3:
     if 'res' in st.session_state:
         r = st.session_state['res']
-        st.write(f"### Laudo: {r['Equip']}")
+        st.write(f"### Laudo Técnico: {r['Equip']}")
         def pdf_gen():
             b = io.BytesIO(); c = canvas.Canvas(b, pagesize=A4)
             c.drawString(2*cm, 25*cm, f"Equipamento: {r['Equip']}")
             c.drawString(2*cm, 24*cm, f"Energia Incidente: {r['E_cal']:.4f} cal/cm²")
             c.save(); return b.getvalue()
-        st.download_button("Baixar PDF", pdf_gen(), "laudo.pdf", key="dl_pdf")
+        st.download_button("📩 Baixar Laudo PDF", pdf_gen(), "laudo.pdf", key="dl_pdf")
+    else:
+        st.info("⚠️ Realize o cálculo na Aba 2 primeiro.")
