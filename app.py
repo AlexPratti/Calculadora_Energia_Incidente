@@ -58,116 +58,79 @@ if st.session_state['auth'] is None:
                     if res.data and res.data[0]['status'] == 'ativo':
                         st.session_state['auth'] = {"role": "user", "user": u}
                         st.rerun()
-                    else: st.error("Usuário não encontrado ou pendente de aprovação.")
+                    else: st.error("Acesso pendente ou incorreto.")
                 except: st.error("Erro de conexão.")
     st.stop()
 
-# --- 4. BASE DE DADOS TÉCNICA (TABELAS 1 E 3) ---
-# Estrutura: "Equipamento": {"gap", "dist", "dims": {"Texto do Select": [A, L, P, Sinal]}}
+# --- 4. BASE DE DADOS ---
 equip_data = {
-    "CCM 15 kV": {
-        "gap": 152.0, "dist": 914.4, 
-        "dims": {"914,4 x 914,4 x 914,4": [914.4, 914.4, 914.4, ""]}
-    },
-    "Conjunto de manobra 15 kV": {
-        "gap": 152.0, "dist": 914.4, 
-        "dims": {"1143 x 762 x 762": [1143.0, 762.0, 762.0, ""]}
-    },
-    "CCM 5 kV": {
-        "gap": 104.0, "dist": 914.4, 
-        "dims": {"660,4 x 660,4 x 660,4": [660.4, 660.4, 660.4, ""]}
-    },
-    "Conjunto de manobra 5 kV": {
-        "gap": 104.0, "dist": 914.4, 
-        "dims": {
-            "914,4 x 914,4 x 914,4": [914.4, 914.4, 914.4, ""],
-            "1143 x 762 x 762": [1143.0, 762.0, 762.0, ""]
-        }
-    },
-    "CCM e painel raso de BT": {
-        "gap": 25.0, "dist": 457.2, 
-        "dims": {"355,6 x 304,8 x ≤ 203,2": [355.6, 304.8, 203.2, "≤"]}
-    },
-    "CCM e painel típico de BT": {
-        "gap": 25.0, "dist": 457.2, 
-        "dims": {"508,0 x 508,0 x > 508,0": [508.0, 508.0, 508.0, ">"]}
-    },
-    "Caixa de junção de cabos": {
-        "gap": 25.0, "dist": 457.2, 
-        "dims": {
-            "355,6 x 304,8 x ≤ 203,2": [355.6, 304.8, 203.2, "≤"],
-            "508,0 x 508,0 x ≤ 203,2": [508.0, 508.0, 203.2, "≤"]
-        }
-    }
+    "CCM 15 kV": {"gap": 152.0, "dist": 914.4, "dims": {"914,4 x 914,4 x 914,4": [914.4, 914.4, 914.4, ""]}},
+    "Conjunto de manobra 15 kV": {"gap": 152.0, "dist": 914.4, "dims": {"1143 x 762 x 762": [1143.0, 762.0, 762.0, ""]}},
+    "CCM 5 kV": {"gap": 104.0, "dist": 914.4, "dims": {"660,4 x 660,4 x 660,4": [660.4, 660.4, 660.4, ""]}},
+    "Conjunto de manobra 5 kV": {"gap": 104.0, "dist": 914.4, "dims": {"914,4 x 914,4 x 914,4": [914.4, 914.4, 914.4, ""], "1143 x 762 x 762": [1143.0, 762.0, 762.0, ""]}},
+    "CCM e painel raso de BT": {"gap": 25.0, "dist": 457.2, "dims": {"355,6 x 304,8 x ≤ 203,2": [355.6, 304.8, 203.2, "≤"]}},
+    "CCM e painel típico de BT": {"gap": 25.0, "dist": 457.2, "dims": {"508,0 x 508,0 x > 508,0": [508.0, 508.0, 508.0, ">"]}},
+    "Caixa de junção de cabos": {"gap": 25.0, "dist": 457.2, "dims": {"355,6 x 304,8 x ≤ 203,2": [355.6, 304.8, 203.2, "≤"], "508,0 x 508,0 x ≤ 203,2": [508.0, 508.0, 203.2, "≤"]}}
 }
 
-# --- 5. INTERFACE PRINCIPAL ---
-tab1, tab2, tab3 = st.tabs(["Equipamento/Dimensões", "Cálculos e Resultados", "Relatório"])
+# --- 5. INTERFACE ---
+tab1, tab2, tab3 = st.tabs(["Equipamento/Dimensões", "Cálculos", "Relatório"])
 
 with tab1:
     st.subheader("Configuração do Equipamento")
-    
-    # Seleção de Equipamento
-    equip_sel = st.selectbox("Selecione o Equipamento (Tab. 3):", list(equip_data.keys()), key="sb_equip")
+    equip_sel = st.selectbox("Selecione o Equipamento (Tab. 3):", list(equip_data.keys()))
     info = equip_data[equip_sel]
-    
-    # Seleção de Dimensões (Texto formatado conforme solicitado)
-    dim_list = list(info["dims"].keys())
-    sel_dim = st.selectbox(f"Dimensões para {equip_sel} (Tab. 1):", options=dim_list, key="sb_dim")
-    
-    # Extração dos valores técnicos baseado na seleção
+    sel_dim = st.selectbox(f"Dimensões para {equip_sel}:", list(info["dims"].keys()))
     val_a, val_l, val_p, val_sinal = info["dims"][sel_dim]
-    
-    st.write("---")
+
     st.write("#### Ajuste Manual de Dimensões")
     c1, c2 = st.columns(2)
-    alt = c1.number_input("Altura [A] (mm)", value=float(val_a), key="ni_alt")
-    larg = c2.number_input("Largura [L] (mm)", value=float(val_l), key="ni_larg")
+    alt = c1.number_input("Altura [A] (mm)", value=float(val_a))
+    larg = c2.number_input("Largura [L] (mm)", value=float(val_l))
     
     st.write("Profundidade [P] (mm)")
-    cp1, cp2 = st.columns([1, 4]) # Coluna do sinal menor para ficar à esquerda
-    sinal_op = ["", "≤", ">"]
-    idx_sinal = sinal_op.index(val_sinal) if val_sinal in sinal_op else 0
-    sinal_final = cp1.selectbox("Sinal", sinal_op, index=idx_sinal, key="sb_sinal")
-    prof = cp2.number_input("Valor P", value=float(val_p), label_visibility="collapsed", key="ni_prof")
+    cp1, cp2 = st.columns([1, 4]) # Layout alinhado: sinal menor, valor maior
+    sinal_final = cp1.selectbox("Sinal", ["", "≤", ">"], index=["", "≤", ">"].index(val_sinal) if val_sinal in ["", "≤", ">"] else 0)
+    prof = cp2.number_input("Valor P", value=float(val_p), label_visibility="collapsed")
 
     st.divider()
     st.write("#### Parâmetros da Tabela 3")
-    gap_f = st.number_input("GAP (mm)", value=float(info["gap"]), key="ni_gap")
-    dist_f = st.number_input("Distância de Trabalho (mm)", value=float(info["dist"]), key="ni_dist")
+    gap_f = st.number_input("GAP (mm)", value=float(info["gap"]))
+    dist_f = st.number_input("Distância de Trabalho (mm)", value=float(info["dist"]))
 
 with tab2:
-    st.subheader("Entrada de Dados e Cálculo")
+    st.subheader("Cálculos")
     col1, col2, col3 = st.columns(3)
-    v_oc = col1.number_input("Tensão Voc (kV)", 0.208, 15.0, 13.8, key="ni_voc")
-    i_bf = col2.number_input("Curto Ibf (kA)", 0.5, 106.0, 4.85, key="ni_ibf")
-    t_arc = col3.number_input("Tempo T (ms)", 10.0, 5000.0, 488.0, key="ni_tarc")
+    v_oc = col1.number_input("Tensão Voc (kV)", 0.208, 15.0, 13.8)
+    i_bf = col2.number_input("Corrente Ibf (kA)", 0.5, 106.0, 4.85)
+    t_arc = col3.number_input("Tempo T (ms)", 10.0, 5000.0, 488.0)
     
-    if st.button("Calcular Energia Incidente", key="btn_calc"):
+    if st.button("Calcular Resultados"):
         k_ia = {600: [-0.04287, 1.035, -0.083, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092], 2700: [0.0065, 1.001, -0.024, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729], 14300: [0.005795, 1.015, -0.011, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729]}
         k_en = {600: [0.753364, 0.566, 1.752636, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092, 0, -1.598, 0.957], 2700: [2.40021, 0.165, 0.354202, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.569, 0.9778], 14300: [3.825917, 0.11, -0.999749, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.568, 0.99]}
         
         ees = (alt/25.4 + larg/25.4) / 2.0
         cf = -0.0003*ees**2 + 0.03441*ees + 0.4325
-        
         ia_sts = [calc_ia_step(i_bf, gap_f, k_ia[v]) for v in [600, 2700, 14300]]
         en_sts = [calc_en_step(ia, i_bf, gap_f, dist_f, t_arc, k_en[v], cf) for ia, v in zip(ia_sts, [600, 2700, 14300])]
         
         e_cal = interpolar(v_oc, *en_sts) / 4.184
         cat = "CAT 2" if e_cal <= 8 else "CAT 4" if e_cal <= 40 else "EXTREMO RISCO"
         
-        st.session_state['res'] = {"E": e_cal, "Cat": cat, "Equip": equip_sel, "V": v_oc}
-        st.divider()
+        st.session_state['res'] = {"E_cal": e_cal, "Cat": cat, "Equip": equip_sel} # Chave E_cal garantida aqui
         st.metric("Energia Incidente", f"{e_cal:.4f} cal/cm²")
-        st.warning(f"Vestimenta recomendada: {cat}")
+        st.warning(f"Vestimenta: {cat}")
 
 with tab3:
     if 'res' in st.session_state:
         r = st.session_state['res']
-        st.write(f"### Laudo: {r['Equip']}")
+        st.write(f"### Laudo Técnico: {r['Equip']}")
         def pdf_gen():
             b = io.BytesIO(); c = canvas.Canvas(b, pagesize=A4)
             c.drawString(2*cm, 25*cm, f"Equipamento: {r['Equip']}")
-            c.drawString(2*cm, 24*cm, f"Energia Incidente: {r['E']:.4f} cal/cm²")
+            # CORREÇÃO DA CHAVE: Usando r['E_cal'] que foi definida no botão Calcular
+            c.drawString(2*cm, 24*cm, f"Energia Incidente: {r['E_cal']:.4f} cal/cm²") 
             c.save(); return b.getvalue()
-        st.download_button("Baixar PDF", pdf_gen(), "laudo.pdf", key="btn_pdf")
+        st.download_button("Baixar PDF", pdf_gen(), "laudo.pdf")
+    else:
+        st.info("⚠️ Realize o cálculo na Aba 2 primeiro para habilitar o relatório.")
