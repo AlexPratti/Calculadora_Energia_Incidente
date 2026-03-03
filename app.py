@@ -152,25 +152,22 @@ with tab3:
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2.5*cm, leftMargin=2.5*cm, topMargin=2.5*cm, bottomMargin=2.5*cm)
             styles = getSampleStyleSheet()
-            
-            # Estilos Profissionais
             style_just = ParagraphStyle(name='J', parent=styles['Normal'], alignment=TA_JUSTIFY, fontSize=11, leading=16.5)
             style_h2 = ParagraphStyle(name='H2', parent=styles['Heading2'], fontSize=13, leading=18, spaceBefore=15, spaceAfter=10)
-            style_toc = ParagraphStyle(name='TOC', parent=styles['Normal'], fontSize=11, leading=22)
 
-            # Classe para Paginação Automática no Rodapé
-            class PageNumCanvas(canvas.Canvas):
+            # Classe para Paginação a partir da Página 3 (Sem o nome "Página")
+            class CustomCanvas(canvas.Canvas):
                 def __init__(self, *args, **kwargs):
                     canvas.Canvas.__init__(self, *args, **kwargs)
                 def showPage(self):
-                    if self._pageNumber > 0: # Paginação após a Capa
-                        self.setFont("Helvetica", 9)
-                        self.drawRightString(20*cm, 1.5*cm, f"Página {self._pageNumber}")
+                    if self._pageNumber >= 3: # Inicia apenas no conteúdo técnico
+                        self.setFont("Helvetica", 10)
+                        self.drawRightString(19*cm, 1.5*cm, f"{self._pageNumber}")
                     canvas.Canvas.showPage(self)
 
             elements = []
 
-            # --- CAPA (Página 1) ---
+            # --- 1. CAPA ---
             elements.append(Spacer(1, 6*cm))
             elements.append(Paragraph("<b>RELATÓRIO TÉCNICO DE CÁLCULO DE ENERGIA INCIDENTE</b>", ParagraphStyle(name='CT', parent=styles['Title'], fontSize=24, alignment=TA_CENTER)))
             elements.append(Spacer(1, 2*cm))
@@ -179,11 +176,9 @@ with tab3:
             elements.append(Paragraph(f"Data de Emissão: {datetime.now().strftime('%d/%m/%Y')}", ParagraphStyle(name='CD', parent=styles['Normal'], fontSize=11, alignment=TA_CENTER)))
             elements.append(PageBreak())
 
-            # --- SUMÁRIO PROFISSIONAL (Página 2) ---
+            # --- 2. SUMÁRIO (Estilo Profissional) ---
             elements.append(Paragraph("<b>SUMÁRIO</b>", styles['Title']))
             elements.append(Spacer(1, 1.5*cm))
-            
-            # Tabela de Sumário para alinhamento perfeito dos números à direita
             toc_data = [
                 ["1. Memorial de Cálculo (NBR 17227:2025)", "03"],
                 ["2. Análise do Resultado e Parâmetros", "03"],
@@ -192,50 +187,41 @@ with tab3:
                 ["5. Tabela de Distância X Energia Incidente", "04"],
                 ["6. Disposições Finais e NR-10", "04"]
             ]
-            
-            # Adiciona pontos de preenchimento (dots)
-            for i, row in enumerate(toc_data):
-                row[0] = row[0] + " ." * 25
-
-            t_toc = Table(toc_data, colWidths=[13*cm, 2*cm])
+            t_toc = Table(toc_data, colWidths=[13.5*cm, 1.5*cm])
             t_toc.setStyle(TableStyle([
-                ('ALIGN', (0,0), (0,-1), 'LEFT'),
                 ('ALIGN', (1,0), (1,-1), 'RIGHT'),
                 ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
                 ('FONTSIZE', (0,0), (-1,-1), 11),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 8)
+                ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+                ('LINEBELOW', (0,0), (-1,-1), 0.25, colors.lightgrey) # Linha discreta para separar tópicos
             ]))
             elements.append(t_toc)
             elements.append(PageBreak())
 
-            # --- CONTEÚDO TÉCNICO (Páginas 3 e 4) ---
+            # --- 3. CONTEÚDO TÉCNICO ---
             elements.append(Paragraph("<b>1. MEMORIAL DE CÁLCULO (NBR 17227:2025)</b>", style_h2))
-            elements.append(Paragraph("A metodologia aplicada segue a norma NBR 17227:2025 para painéis em espaços confinados. Foram executados cálculos de Corrente de Arco via interpolação polinomial e determinação da Energia Incidente com ajuste do fator de borda para a geometria real do invólucro. O objetivo é garantir que a energia que atinge a pele do trabalhador seja inferior a 1,2 cal/cm² (limite de queimadura incurável de 2º grau).", style_just))
+            elements.append(Paragraph("A metodologia aplicada segue a norma NBR 17227:2025 para painéis em espaços confinados. O estudo visa determinar a energia incidente para mitigação de riscos elétricos.", style_just))
 
             elements.append(Paragraph("<b>2. ANÁLISE DO RESULTADO E PARÂMETROS</b>", style_h2))
-            elements.append(Paragraph(f"• Corrente de Arco: <b>{r['I']:.3f} kA</b><br/>• Energia Incidente: <b>{r['E_cal']:.4f} cal/cm²</b> ({r['E_joule']:.2f} J/cm²)<br/>• Fronteira de Arco (DLA): <b>{r['D']:.1f} mm</b><br/>• Gap: <b>{r['Gap']:.1f} mm</b><br/>• Distância de Trabalho: <b>{r['Dist']:.1f} mm</b>", style_just))
+            elements.append(Paragraph(f"• Iarc: <b>{r['I']:.3f} kA</b><br/>• Energia Incidente: <b>{r['E_cal']:.4f} cal/cm²</b> ({r['E_joule']:.2f} J/cm²)<br/>• Fronteira de Arco (DLA): <b>{r['D']:.1f} mm</b><br/>• Gap: <b>{r['Gap']:.1f} mm</b><br/>• Distância de Trabalho: <b>{r['Dist']:.1f} mm</b>", style_just))
 
             elements.append(Paragraph("<b>3. RECOMENDAÇÃO E JUSTIFICATIVA TÉCNICA</b>", style_h2))
-            elements.append(Paragraph(f"Pela classificação nominal do cálculo, a vestimenta requerida é <b>{r['V_norma']}</b>. Contudo, a recomendação final de proteção é <b>{r['V_seguranca']}</b>. Esta recomendação fundamenta-se na gestão de riscos e margem de segurança operacional (Princípio ALARA).", style_just))
-            elements.append(Paragraph("<b>Justificativa:</b> Variações no tempo de atuação da proteção ou no posicionamento do operador podem elevar a energia real acima da capacidade nominal, por isso adota-se um fator de segurança conservador.", style_just))
+            elements.append(Paragraph(f"Cálculo nominal: {r['V_norma']}. Recomendação final: <b>{r['V_seguranca']}</b>. <br/><b>Justificativa:</b> Gestão de riscos baseada no Princípio ALARA para proteção contra incertezas operacionais.", style_just))
 
             elements.append(Paragraph("<b>4. EQUIPAMENTOS DE PROTEÇÃO (EPI) COMPLEMENTARES</b>", style_h2))
-            elements.append(Paragraph("Além da vestimenta retardante de chama (FR/AR) na categoria recomendada, são obrigatórios:<br/>• Protetor Facial contra Arco Elétrico;<br/>• Balaclava Ignífuga;<br/>• Luvas Isolantes de Borracha com luvas de cobertura;<br/>• Calçado de Segurança sem componentes metálicos.", style_just))
+            elements.append(Paragraph("Obrigatório: Protetor facial ATPV, Balaclava ignífuga, Luvas isolantes (borracha + couro) e calçado de segurança.", style_just))
 
-            # Tabela protegida contra quebras
             elements.append(KeepTogether([
                 Paragraph("<b>5. TABELA DE DISTÂNCIA X ENERGIA INCIDENTE</b>", style_h2),
-                Table([["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]] + r['Sens'], colWidths=[5*cm]*3, style=TableStyle([('BACKGROUND',(0,0),(-1,0),colors.lightgrey),('ALIGN',(0,0),(-1,-1),'CENTER'),('GRID',(0,0),(-1,-1),0.5,colors.grey),('BOTTOMPADDING',(0,0),(-1,-1),8),('TOPPADDING',(0,0),(-1,-1),8)]))
+                Table([["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]] + r['Sens'], colWidths=[5*cm]*3, style=TableStyle([('BACKGROUND',(0,0),(-1,0),colors.lightgrey),('ALIGN',(0,0),(-1,-1),'CENTER'),('GRID',(0,0),(-1,-1),0.5,colors.grey),('BOTTOMPADDING',(0,0),(-1,-1),8)]))
             ]))
 
             elements.append(Paragraph("<b>6. DISPOSIÇÕES FINAIS E NR-10</b>", style_h2))
-            elements.append(Paragraph("Este estudo atende às exigências da NR-10. A validade deste relatório está condicionada à manutenção das configurações atuais dos dispositivos de proteção e da integridade física dos equipamentos analisados conforme projeto original.", style_just))
+            elements.append(Paragraph("Em conformidade com a NR-10, o laudo recomenda o uso de vestimentas com CA válido e compatível com o ATPV determinado.", style_just))
 
-            # Assinatura
             elements.append(Spacer(1, 2.5*cm))
-            elements.append(Paragraph("________________________________________________", styles['Normal']))
-            elements.append(Paragraph(f"<b>Engenheiro Eletricista - CREA {uf_c}/{num_c}</b>", styles['Normal']))
+            elements.append(Paragraph(f"________________________________________________<br/><b>Engenheiro Eletricista - CREA {uf_c}/{num_c}</b>", ParagraphStyle(name='Sig', parent=styles['Normal'], alignment=TA_CENTER)))
 
-            doc.build(elements, canvasmaker=PageNumCanvas); return buffer.getvalue()
+            doc.build(elements, canvasmaker=CustomCanvas); return buffer.getvalue()
 
-        st.download_button("📩 Baixar Relatório Profissional (PDF)", gerar_pdf_profissional(), f"Laudo_Tecnico_{cliente}.pdf")
+        st.download_button("📩 Baixar Relatório Profissional (PDF)", gerar_pdf_profissional(), f"Relatorio_Tecnico_{cliente}.pdf")
