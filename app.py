@@ -74,20 +74,56 @@ if st.session_state['auth'] is None:
             except: st.error("Erro de conexão.")
     st.stop()
 
-# --- 4. BASE DE DADOS ---
+# --- 4. BASE DE DADOS (MAPEADA DAS TABELAS 1 E 3 DA IMAGEM) ---
 equip_data = {
-    "CCM 15 kV": {"gap": 152.0, "dist": 914.4, "dims": {"(A) 914,4 x (L) 914,4 x (P) 914,4": [914.4, 914.4, 914.4, ""]}},
-    "CCM e painel raso de BT": {"gap": 25.0, "dist": 457.2, "dims": {"(A) 355,6 x (L) 304,8 x (P) ≤ 203,2": [355.6, 304.8, 203.2, "≤"]}},
-    "CCM e painel típico de BT": {"gap": 25.0, "dist": 457.2, "dims": {"(A) 355,6 x (L) 304,8 x (P) > 203,2": [355.6, 304.8, 203.2, ">"]}}
+    "CCM 15 kV": {
+        "gap": 152.0, "dist": 914.4, 
+        "dims": {"914,4 x 914,4 x 914,4": [914.4, 914.4, 914.4, ""]}
+    },
+    "Conjunto de manobra 15 kV": {
+        "gap": 152.0, "dist": 914.4, 
+        "dims": {"1143 x 762 x 762": [1143.0, 762.0, 762.0, ""]}
+    },
+    "CCM 5 kV": {
+        "gap": 104.0, "dist": 914.4, 
+        "dims": {"660,4 x 660,4 x 660,4": [660.4, 660.4, 660.4, ""]}
+    },
+    "Conjunto de manobra 5 kV": {
+        "gap": 104.0, "dist": 914.4, 
+        "dims": {
+            "914,4 x 914,4 x 914,4": [914.4, 914.4, 914.4, ""],
+            "1143 x 762 x 762": [1143.0, 762.0, 762.0, ""]
+        }
+    },
+    "CCM e painel raso de BT": {
+        "gap": 25.0, "dist": 457.2, 
+        "dims": {"355,6 x 304,8 x ≤ 203,2": [355.6, 304.8, 203.2, "≤"]}
+    },
+    "CCM e painel típico de BT": {
+        "gap": 25.0, "dist": 457.2, 
+        "dims": {"355,6 x 304,8 x > 203,2": [355.6, 304.8, 203.2, ">"]}
+    },
+    "Conjunto de manobra BT": {
+        "gap": 32.0, "dist": 609.6, 
+        "dims": {"508 x 508 x 508": [508.0, 508.0, 508.0, ""]}
+    },
+    "Caixa de junção de cabos": {
+        "gap": 13.0, "dist": 457.2, 
+        "dims": {
+            "355,6 x 304,8 x ≤ 203,2": [355.6, 304.8, 203.2, "≤"],
+            "355,6 x 304,8 x > 203,2": [355.6, 304.8, 203.2, ">"]
+        }
+    }
 }
 
 tab1, tab2, tab3 = st.tabs(["Equipamento/Dimensões", "Cálculos e Resultados", "Relatório Final"])
 
 with tab1:
     st.subheader("Configuração do Equipamento")
-    equip_sel = st.selectbox("Selecione o Equipamento:", list(equip_data.keys()))
+    equip_sel = st.selectbox("Selecione o Equipamento (Tab 3):", list(equip_data.keys()))
     info = equip_data[equip_sel]
-    sel_dim = st.selectbox(f"Dimensões:", list(info["dims"].keys()))
+    
+    sel_dim = st.selectbox(f"Selecione o Invólucro (Tab 1):", list(info["dims"].keys()))
     v_a, v_l, v_p, v_s = info["dims"][sel_dim]
     
     c1, c2, c3, c4 = st.columns(4)
@@ -128,6 +164,7 @@ with tab2:
             c_v = definir_vestimenta(e_v)
             sens_list.append([round(d, 1), round(e_v, 4), c_v])
         
+        # Ponto de trabalho (primeiro item da lista de sensibilidade)
         e_trab_cal = sens_list[0][1]
         e_trab_joule = e_trab_cal * 4.184
         v_norma = definir_vestimenta(e_trab_cal)
@@ -192,7 +229,6 @@ with tab3:
                 f"• Distância de Trabalho: <b>{r['Dist']:.1f} mm</b>", style_just))
             
             elementos.append(Spacer(1, 0.3*cm))
-            
             elementos.append(Paragraph("<b>3. RECOMENDAÇÃO DE VESTIMENTA E JUSTIFICATIVA TÉCNICA</b>", styles['Heading2']))
             elementos.append(Paragraph(
                 f"Pela classificação nominal do cálculo, a vestimenta requerida é <b>{r['V_norma']}</b>. "
