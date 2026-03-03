@@ -8,7 +8,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_JUSTIFY
+from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
 # --- 1. CONFIGURAÇÃO E CONEXÃO ---
@@ -136,14 +136,12 @@ with tab2:
         st.session_state['res'] = {
             "I": i_arc, "D": dla, "E_cal": e_trab_cal, "E_joule": e_trab_joule,
             "V_norma": v_norma, "V_seguranca": v_seguranca,
-            "Sens": sens_list, "Equip": equip_sel
+            "Sens": sens_list, "Equip": equip_sel, "Gap": gap_f, "Dist": dist_f
         }
         
         st.divider()
         st.subheader("Resultados do Estudo")
-
-        # Usando colunas para reduzir a largura e alinhar à esquerda
-        c_left, c_spacer = st.columns([1, 2])
+        c_left, c_spacer = st.columns([1, 1.5])
         
         with c_left:
             st.metric("Corrente de Arco (Iarc)", f"{i_arc:.3f} kA")
@@ -161,19 +159,24 @@ with tab2:
 with tab3:
     if 'res' in st.session_state:
         r = st.session_state['res']
-        col_c1, col_c2 = st.columns(2)
-        uf_crea = col_c1.text_input("UF CREA:", "ES")
-        num_crea = col_c2.text_input("Número CREA:", "")
+        col_c1, col_c2, col_c3 = st.columns(3)
+        local_equip = col_c1.text_input("Local do Equipamento:", "Subestação Principal")
+        uf_crea = col_c2.text_input("UF CREA:", "ES")
+        num_crea = col_c3.text_input("Número CREA:", "")
 
         def gerar_pdf_profissional():
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
             styles = getSampleStyleSheet()
             style_just = ParagraphStyle(name='Justify', parent=styles['Normal'], alignment=TA_JUSTIFY, leading=14)
+            style_title = ParagraphStyle(name='TitleCenter', parent=styles['Title'], alignment=TA_CENTER, fontSize=16)
             elementos = []
 
-            elementos.append(Paragraph("<font size=16><b>RELATÓRIO TÉCNICO DE ESTUDO DE ARCO ELÉTRICO</b></font>", styles['Title']))
-            elementos.append(Paragraph(f"Emitido em: {datetime.now().strftime('%d/%m/%Y')}", styles['Normal']))
+            elementos.append(Paragraph("<b>RELATÓRIO TÉCNICO DE CÁLCULO DE ENERGIA INCIDENTE</b>", style_title))
+            elementos.append(Spacer(1, 0.5*cm))
+            elementos.append(Paragraph(f"<b>Local:</b> {local_equip}", styles['Normal']))
+            elementos.append(Paragraph(f"<b>Equipamento:</b> {r['Equip']}", styles['Normal']))
+            elementos.append(Paragraph(f"<b>Data de Emissão:</b> {datetime.now().strftime('%d/%m/%Y')}", styles['Normal']))
             elementos.append(Spacer(1, 1*cm))
 
             elementos.append(Paragraph("<b>1. MEMORIAL DE CÁLCULO (NBR 17227:2025)</b>", styles['Heading2']))
@@ -182,12 +185,13 @@ with tab3:
                 "e determinação da Energia Incidente com ajuste do fator de borda para a geometria do invólucro.", style_just))
 
             elementos.append(Spacer(1, 0.5*cm))
-            elementos.append(Paragraph("<b>2. ANÁLISE DO RESULTADO</b>", styles['Heading2']))
+            elementos.append(Paragraph("<b>2. ANÁLISE DO RESULTADO E PARÂMETROS</b>", styles['Heading2']))
             elementos.append(Paragraph(
-                f"Equipamento: <b>{r['Equip']}</b><br/>"
-                f"Corrente de Arco: <b>{r['I']:.3f} kA</b><br/>"
-                f"Energia Incidente: <b>{r['E_cal']:.4f} cal/cm²</b> ({r['E_joule']:.2f} J/cm²)<br/>"
-                f"Fronteira de Arco (DLA): <b>{r['D']:.1f} mm</b>", style_just))
+                f"• Corrente de Arco: <b>{r['I']:.3f} kA</b><br/>"
+                f"• Energia Incidente: <b>{r['E_cal']:.4f} cal/cm²</b> ({r['E_joule']:.2f} J/cm²)<br/>"
+                f"• Fronteira de Arco (DLA): <b>{r['D']:.1f} mm</b><br/>"
+                f"• Gap: <b>{r['Gap']:.1f} mm</b><br/>"
+                f"• Distância de Trabalho: <b>{r['Dist']:.1f} mm</b>", style_just))
             
             elementos.append(Spacer(1, 0.3*cm))
             elementos.append(Paragraph(
