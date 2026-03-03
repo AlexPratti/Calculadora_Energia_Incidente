@@ -142,20 +142,21 @@ with tab2:
         st.divider()
         st.subheader("Resultados do Estudo")
 
-        # 1. Métricas de Corrente e Fronteira
-        st.metric("Corrente de Arco (Iarc)", f"{i_arc:.3f} kA")
-        st.metric("Fronteira de Arco (DLA)", f"{dla:.1f} mm")
+        # Usando colunas para reduzir a largura e alinhar à esquerda
+        c_left, c_spacer = st.columns([1, 2])
         
-        # 2. Tabela de Sensibilidade (Posicionada antes das vestimentas)
-        st.write("#### Distância X Energia Incidente")
-        st.table(pd.DataFrame(sens_list, columns=["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]))
+        with c_left:
+            st.metric("Corrente de Arco (Iarc)", f"{i_arc:.3f} kA")
+            st.metric("Fronteira de Arco (DLA)", f"{dla:.1f} mm")
+            
+            st.write("#### Distância X Energia Incidente")
+            st.table(pd.DataFrame(sens_list, columns=["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]))
 
-        # 3. Informações de Energia e Vestimentas (Abaixo da tabela)
-        st.metric("Energia Incidente", f"{e_trab_cal:.4f} cal/cm²")
-        st.metric("Energia Incidente", f"{e_trab_joule:.2f} J/cm²")
-        
-        st.info(f"**Vestimenta (Conforme Cálculo):** {v_norma}")
-        st.success(f"**Vestimenta (Princípio de Segurança Normativo):** {v_seguranca}")
+            st.metric("Energia Incidente", f"{e_trab_cal:.4f} cal/cm²")
+            st.metric("Energia Incidente", f"{e_trab_joule:.2f} J/cm²")
+            
+            st.info(f"**Vestimenta (Conforme Cálculo):** {v_norma}")
+            st.success(f"**Vestimenta (Princípio de Segurança Normativo):** {v_seguranca}")
 
 with tab3:
     if 'res' in st.session_state:
