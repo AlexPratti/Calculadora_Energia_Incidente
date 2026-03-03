@@ -141,18 +141,15 @@ with tab2:
         
         st.divider()
         st.subheader("Resultados do Estudo")
-        c_left, c_spacer = st.columns([1, 1.5])
+        c_left, _ = st.columns([1, 1.5])
         
         with c_left:
             st.metric("Corrente de Arco (Iarc)", f"{i_arc:.3f} kA")
             st.metric("Fronteira de Arco (DLA)", f"{dla:.1f} mm")
-            
             st.write("#### Distância X Energia Incidente")
             st.table(pd.DataFrame(sens_list, columns=["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]))
-
             st.metric("Energia Incidente", f"{e_trab_cal:.4f} cal/cm²")
             st.metric("Energia Incidente", f"{e_trab_joule:.2f} J/cm²")
-            
             st.info(f"**Vestimenta (Conforme Cálculo):** {v_norma}")
             st.success(f"**Vestimenta (Princípio de Segurança Normativo):** {v_seguranca}")
 
@@ -169,7 +166,7 @@ with tab3:
             doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
             styles = getSampleStyleSheet()
             style_just = ParagraphStyle(name='Justify', parent=styles['Normal'], alignment=TA_JUSTIFY, leading=14)
-            style_title = ParagraphStyle(name='TitleCenter', parent=styles['Title'], alignment=TA_CENTER, fontSize=16)
+            style_title = ParagraphStyle(name='TitleCenter', parent=styles['Title'], alignment=TA_CENTER, fontSize=14)
             elementos = []
 
             elementos.append(Paragraph("<b>RELATÓRIO TÉCNICO DE CÁLCULO DE ENERGIA INCIDENTE</b>", style_title))
@@ -177,14 +174,15 @@ with tab3:
             elementos.append(Paragraph(f"<b>Local:</b> {local_equip}", styles['Normal']))
             elementos.append(Paragraph(f"<b>Equipamento:</b> {r['Equip']}", styles['Normal']))
             elementos.append(Paragraph(f"<b>Data de Emissão:</b> {datetime.now().strftime('%d/%m/%Y')}", styles['Normal']))
-            elementos.append(Spacer(1, 1*cm))
+            elementos.append(Spacer(1, 0.5*cm))
 
             elementos.append(Paragraph("<b>1. MEMORIAL DE CÁLCULO (NBR 17227:2025)</b>", styles['Heading2']))
             elementos.append(Paragraph(
-                "A metodologia aplicada segue a <b>NBR 17227:2025</b>. Foram executados cálculos de Corrente de Arco via interpolação polinomial "
-                "e determinação da Energia Incidente com ajuste do fator de borda para a geometria do invólucro.", style_just))
+                "A metodologia aplicada segue a norma <b>NBR 17227:2025</b>. Foram executados cálculos de Corrente de Arco via interpolação polinomial "
+                "e determinação da Energia Incidente com ajuste do fator de borda para a geometria real do invólucro. "
+                "O objetivo é garantir que a energia que atinge a pele do trabalhador seja inferior a 1,2 cal/cm² (limite de queimadura incurável de 2º grau).", style_just))
 
-            elementos.append(Spacer(1, 0.5*cm))
+            elementos.append(Spacer(1, 0.4*cm))
             elementos.append(Paragraph("<b>2. ANÁLISE DO RESULTADO E PARÂMETROS</b>", styles['Heading2']))
             elementos.append(Paragraph(
                 f"• Corrente de Arco: <b>{r['I']:.3f} kA</b><br/>"
@@ -194,12 +192,31 @@ with tab3:
                 f"• Distância de Trabalho: <b>{r['Dist']:.1f} mm</b>", style_just))
             
             elementos.append(Spacer(1, 0.3*cm))
+            
+            elementos.append(Paragraph("<b>3. RECOMENDAÇÃO DE VESTIMENTA E JUSTIFICATIVA TÉCNICA</b>", styles['Heading2']))
             elementos.append(Paragraph(
-                f"Pela classificação conforme cálculo, a vestimenta requerida é <b>{r['V_norma']}</b>. "
-                f"Considerando o princípio de segurança normativo e o limiar de queimadura, recomenda-se <b>{r['V_seguranca']}</b>.", style_just))
+                f"Pela classificação nominal do cálculo, a vestimenta requerida é <b>{r['V_norma']}</b>. "
+                f"Contudo, a recomendação final de proteção é <b>{r['V_seguranca']}</b>.", style_just))
+            
+            elementos.append(Spacer(1, 0.2*cm))
+            elementos.append(Paragraph(
+                "<b>Justificativa:</b> Esta recomendação fundamenta-se na gestão de riscos e margem de segurança operacional (Princípio ALARA). "
+                "Considerando que variações no tempo de atuação da proteção ou no posicionamento do operador podem elevar a energia real acima da capacidade nominal, "
+                "adota-se um fator de segurança conservador. A utilização de uma categoria superior quando o cálculo aproxima-se do limite de queima de 2º grau "
+                "garante um incremento significativo na proteção sem prejuízo à ergonomia do trabalhador.", style_just))
+
+            elementos.append(Spacer(1, 0.4*cm))
+            elementos.append(Paragraph("<b>4. EQUIPAMENTOS DE PROTEÇÃO (EPI) COMPLEMENTARES</b>", styles['Heading2']))
+            elementos.append(Paragraph(
+                "Além da vestimenta retardante de chama (FR/AR) na categoria recomendada, são obrigatórios:<br/>"
+                "• <b>Protetor Facial contra Arco Elétrico:</b> com classificação ATPV adequada;<br/>"
+                "• <b>Balaclava Ignífuga:</b> proteção completa de cabeça e pescoço;<br/>"
+                "• <b>Luvas Isolantes de Borracha:</b> com luvas de cobertura em couro;<br/>"
+                "• <b>Calçado de Segurança:</b> sem componentes metálicos expostos;<br/>"
+                "• <b>Proteção Ocular e Auditiva:</b> óculos de segurança e protetores auriculares.", style_just))
 
             elementos.append(Spacer(1, 0.5*cm))
-            elementos.append(Paragraph("<b>3. TABELA DE DISTÂNCIA X ENERGIA INCIDENTE</b>", styles['Heading2']))
+            elementos.append(Paragraph("<b>5. TABELA DE DISTÂNCIA X ENERGIA INCIDENTE</b>", styles['Heading2']))
             data_tab = [["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]] + r['Sens']
             t = Table(data_tab, colWidths=[5*cm, 5*cm, 5*cm])
             t.setStyle(TableStyle([
@@ -210,7 +227,7 @@ with tab3:
             ]))
             elementos.append(t)
 
-            elementos.append(Spacer(1, 2*cm))
+            elementos.append(Spacer(1, 1.5*cm))
             elementos.append(Paragraph("________________________________________________", styles['Normal']))
             elementos.append(Paragraph(f"<b>Engenheiro Eletricista - CREA {uf_crea}/{num_crea}</b>", styles['Normal']))
 
