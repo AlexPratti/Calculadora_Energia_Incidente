@@ -7,11 +7,12 @@ from supabase import create_client, Client
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_JUSTIFY
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
 # --- 1. CONFIGURAÇÃO E CONEXÃO ---
-st.set_page_config(page_title="NBR 17227 - Gestão de Arco Elétrico", layout="wide")
+st.set_page_config(page_title="NBR 17227 - Relatório Técnico Profissional", layout="wide")
 
 URL_SUPABASE = "https://lfgqxphittdatzknwkqw.supabase.co" 
 KEY_SUPABASE = "sb_publishable_zLiarara0IVVcwQm6oR2IQ_Sb0YOWTe" 
@@ -50,8 +51,8 @@ def interpolar(v, f600, f2700, f14300):
 if 'auth' not in st.session_state: st.session_state['auth'] = None
 if st.session_state['auth'] is None:
     st.title("🔐 Acesso ao Sistema NBR 17227")
-    u = st.text_input("E-mail", key="l_u")
-    p = st.text_input("Senha", type="password", key="l_p")
+    u = st.text_input("E-mail")
+    p = st.text_input("Senha", type="password")
     if st.button("Acessar"):
         if u == "admin" and p == "101049app":
             st.session_state['auth'] = {"role": "admin", "user": "Administrador"}
@@ -62,7 +63,7 @@ if st.session_state['auth'] is None:
                 if res.data and res.data[0]['status'] == 'ativo':
                     st.session_state['auth'] = {"role": "user", "user": u}
                     st.rerun()
-                else: st.error("Acesso negado.")
+                else: st.error("Acesso negado ou pendente.")
             except: st.error("Erro de conexão.")
     st.stop()
 
@@ -76,7 +77,7 @@ equip_data = {
 tab1, tab2, tab3 = st.tabs(["Equipamento/Dimensões", "Cálculos e Resultados", "Relatório Final"])
 
 with tab1:
-    st.subheader("Configuração do Cenário")
+    st.subheader("Configuração do Equipamento")
     equip_sel = st.selectbox("Selecione o Equipamento:", list(equip_data.keys()))
     info = equip_data[equip_sel]
     sel_dim = st.selectbox(f"Dimensões:", list(info["dims"].keys()))
@@ -85,20 +86,21 @@ with tab1:
     c1, c2, c3, c4 = st.columns(4)
     alt = c1.number_input("Altura [A] (mm)", value=float(v_a))
     larg = c2.number_input("Largura [L] (mm)", value=float(v_l))
-    sinal_f = c3.selectbox("Sinal P", ["", "≤", ">"], index=["", "≤", ">"].index(v_s) if v_s in ["", "≤", ">"] else 0)
+    sinal_op = ["", "≤", ">"]
+    sinal_f = c3.selectbox("Sinal P", sinal_op, index=sinal_op.index(v_s) if v_s in sinal_op else 0)
     prof = c4.number_input("Profundidade [P] (mm)", value=float(v_p))
     
     gap_f = st.number_input("GAP (mm)", value=float(info["gap"]))
     dist_f = st.number_input("Distância Trabalho (mm)", value=float(info["dist"]))
 
 with tab2:
-    st.subheader("Resultados Técnicos e Sensibilidade")
+    st.subheader("Análise de Arco Elétrico")
     col1, col2, col3 = st.columns(3)
     v_oc = col1.number_input("Tensão Voc (kV)", 0.208, 15.0, 13.8)
     i_bf = col2.number_input("Corrente Ibf (kA)", 0.5, 106.0, 4.85)
     t_arc = col3.number_input("Tempo T (ms)", 10.0, 5000.0, 488.0)
     
-    if st.button("Executar Estudo de Arco"):
+    if st.button("Executar Estudo"):
         k_v = [0.6, 2.7, 14.3]
         k_ia = {0.6: [-0.04287, 1.035, -0.083, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092], 2.7: [0.0065, 1.001, -0.024, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729], 14.3: [0.005795, 1.015, -0.011, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729]}
         k_en = {0.6: [0.753364, 0.566, 1.752636, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092, 0, -1.598, 0.957], 2.7: [2.40021, 0.165, 0.354202, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.569, 0.9778], 14.3: [3.825917, 0.11, -0.999749, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.568, 0.99]}
@@ -106,71 +108,93 @@ with tab2:
         ees = (alt/25.4 + larg/25.4) / 2.0
         cf = -0.0003*ees**2 + 0.03441*ees + 0.4325
         
-        # Corrente e Fronteira
         ia_sts = [calc_ia_step(i_bf, gap_f, k_ia[v]) for v in k_v]
         i_arc = interpolar(v_oc, *ia_sts)
         dla_sts = [calc_dla_step(ia, i_bf, gap_f, t_arc, k_en[v], cf) for ia, v in zip(ia_sts, k_v)]
         dla = interpolar(v_oc, *dla_sts)
 
-        # Tabela de Sensibilidade até a Fronteira
         d_pontos = np.linspace(dist_f, dla, 5)
         sens_list = []
         for d in d_pontos:
             e_sts_temp = [calc_en_step(ia, i_bf, gap_f, d, t_arc, k_en[v], cf) for ia, v in zip(ia_sts, k_v)]
             e_v = interpolar(v_oc, *e_sts_temp) / 4.184
             c_v = "CAT 1" if e_v <= 4 else "CAT 2" if e_v <= 8 else "CAT 4"
-            if e_v < 1.2: c_v = "SEGURO (<1.2)"
-            sens_list.append({"Distância (mm)": round(d, 1), "Energia (cal/cm²)": round(e_v, 4), "Vestimenta": c_v})
+            if e_v < 1.2: c_v = "SEGURO"
+            sens_list.append([round(d, 1), round(e_v, 4), c_v])
         
-        e_final = sens_list[0]["Energia (cal/cm²)"]
-        cat_norma = sens_list[0]["Vestimenta"]
-        cat_segura = "CAT 2" if (e_final > 1.2 and e_final <= 8) else cat_norma
-
-        st.session_state['res'] = {"I": i_arc, "D": dla, "E": e_final, "CatN": cat_norma, "CatS": cat_segura, "Sens": sens_list, "Equip": equip_sel}
+        e_trab = sens_list[0][1]
+        st.session_state['res'] = {"I": i_arc, "D": dla, "E": e_trab, "Sens": sens_list, "Equip": equip_sel}
         
         st.divider()
-        c_i, c_d = st.columns(2)
-        c_i.metric("Corrente Final de Arco (Iarc_Final)", f"{i_arc:.3f} kA")
-        c_d.metric("Fronteira de Aproximação (DLA)", f"{dla:.1f} mm")
-        
-        st.write("#### Tabela de Sensibilidade (Afastamento até a Fronteira)")
-        st.table(pd.DataFrame(sens_list))
-        
-        st.metric("Energia Incidente no Ponto de Trabalho", f"{e_final:.4f} cal/cm²")
-        st.success(f"**Vestimenta Requerida (Cálculo):** {cat_norma}")
-        st.warning(f"**Vestimenta Requerida (Segurança/Norma):** {cat_segura}")
+        st.metric("Corrente de Arco (Iarc)", f"{i_arc:.3f} kA")
+        st.metric("Fronteira de Arco (DLA)", f"{dla:.1f} mm")
+        st.write("#### Sensibilidade até a Fronteira")
+        st.table(pd.DataFrame(sens_list, columns=["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]))
 
 with tab3:
     if 'res' in st.session_state:
         r = st.session_state['res']
-        st.subheader("Configuração do Relatório")
-        c_uf = st.text_input("UF do CREA:", "")
-        c_num = st.text_input("Número do CREA:", "")
+        col_c1, col_c2 = st.columns(2)
+        uf_crea = col_c1.text_input("UF CREA:", "ES")
+        num_crea = col_f2 = col_c2.text_input("Número CREA:", "")
 
-        def gerar_pdf():
-            buffer = io.BytesIO(); doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
-            styles = getSampleStyleSheet(); elementos = []
+        def gerar_pdf_profissional():
+            buffer = io.BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+            styles = getSampleStyleSheet()
             
-            elementos.append(Paragraph("<b>RELATÓRIO TÉCNICO DE ESTUDO DE ARCO ELÉTRICO</b>", styles['Title']))
-            elementos.append(Paragraph("Data: __/__/____", styles['Normal']))
+            # Estilo Justificado
+            style_just = ParagraphStyle(name='Justify', parent=styles['Normal'], alignment=TA_JUSTIFY, leading=14)
+            elementos = []
+
+            elementos.append(Paragraph("<font size=16><b>RELATÓRIO TÉCNICO DE ESTUDO DE ARCO ELÉTRICO</b></font>", styles['Title']))
+            elementos.append(Paragraph("Emitido em: Data: __/__/____", styles['Normal']))
             elementos.append(Spacer(1, 1*cm))
 
+            # 1. Memorial Justificado
             elementos.append(Paragraph("<b>1. MEMORIAL DE CÁLCULO (NBR 17227:2025)</b>", styles['Heading2']))
-            elementos.append(Paragraph("A metodologia aplicada segue a norma NBR 17227:2025 para painéis em espaços confinados, com cálculos de Iarc via interpolação polinomial e Energia Incidente com ajuste de fator de borda.", styles['Normal']))
+            elementos.append(Paragraph(
+                "A metodologia de cálculo aplicada segue rigorosamente a norma <b>NBR 17227:2025</b> para painéis em espaços confinados. "
+                "Foram executados cálculos de Corrente de Arco ($I_{arc}$) via interpolação polinomial e determinação da Energia Incidente ($E_{cal}$) "
+                "com ajuste do fator de borda ($C_f$) para refletir a geometria real do invólucro.", style_just))
 
+            # 2. Análise Justificada
             elementos.append(Spacer(1, 0.5*cm))
             elementos.append(Paragraph("<b>2. ANÁLISE DO RESULTADO</b>", styles['Heading2']))
-            elementos.append(Paragraph(f"O estudo para o equipamento {r['Equip']} resultou em uma energia incidente de <b>{r['E']:.4f} cal/cm²</b>. Pela classificação estrita da norma, a vestimenta seria {r['CatN']}. Contudo, visando a proteção contra o limiar de queimadura de 2º grau (1,2 cal/cm²), recomenda-se a utilização da vestimenta <b>{r['CatS']}</b> para maior margem de segurança operacional.", styles['Normal']))
+            c_norma = "CAT 1" if r['E'] <= 4 else "CAT 2"
+            c_segur = "CAT 2" if (r['E'] > 1.2 and r['E'] <= 8) else c_norma
+            elementos.append(Paragraph(
+                f"O estudo para o equipamento <b>{r['Equip']}</b> resultou em uma energia incidente de <b>{r['E']:.4f} cal/cm²</b>. "
+                f"Pela classificação estrita da norma, a vestimenta seria {c_norma}. Contudo, visando a proteção contra o limiar de queimadura "
+                f"de 2º grau (1,2 cal/cm²), recomenda-se a utilização da vestimenta <b>{c_segur}</b> para maior margem de segurança operacional.", style_just))
 
+            # Tabela de Sensibilidade no PDF
+            elementos.append(Spacer(1, 0.5*cm))
+            elementos.append(Paragraph("<b>4. TABELA DE SENSIBILIDADE (AFASTAMENTO)</b>", styles['Heading2']))
+            data_tab = [["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]] + r['Sens']
+            t = Table(data_tab, colWidths=[5*cm, 5*cm, 5*cm])
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.whitesmoke, colors.white])
+            ]))
+            elementos.append(t)
+
+            # 3. EPIs
             elementos.append(Spacer(1, 0.5*cm))
             elementos.append(Paragraph("<b>3. EQUIPAMENTOS DE PROTEÇÃO (EPI) REQUERIDOS</b>", styles['Heading2']))
-            elementos.append(Paragraph("• Vestimenta FR/AR conforme categoria recomendada;<br/>• Protetor facial contra arco elétrico;<br/>• Balaclava ignífuga;<br/>• Luvas isolantes de borracha e cobertura em couro;<br/>• Calçado de segurança sem componentes metálicos.", styles['Normal']))
+            elementos.append(Paragraph(
+                "• Vestimenta FR/AR conforme categoria recomendada;<br/>• Protetor facial contra arco elétrico;<br/>• Balaclava ignífuga;<br/>• Luvas isolantes de borracha e cobertura em couro;<br/>• Calçado de segurança sem componentes metálicos.", style_just))
 
+            # Assinatura
             elementos.append(Spacer(1, 2*cm))
             elementos.append(Paragraph("________________________________________________", styles['Normal']))
             elementos.append(Paragraph("<b>Engenheiro Eletricista</b>", styles['Normal']))
-            elementos.append(Paragraph(f"CREA: {c_uf} - {c_num}", styles['Normal']))
-            
+            elementos.append(Paragraph(f"CREA: {uf_crea} - {num_crea}", styles['Normal']))
+
             doc.build(elementos); return buffer.getvalue()
 
-        st.download_button("📩 Baixar Relatório (PDF)", gerar_pdf(), f"Laudo_{r['Equip']}.pdf")
+        st.download_button("📩 Baixar Relatório (PDF)", gerar_pdf_profissional(), f"Laudo_{r['Equip']}.pdf")
