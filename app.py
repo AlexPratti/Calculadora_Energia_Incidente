@@ -142,18 +142,17 @@ with tab2:
         st.divider()
         st.subheader("Resultados do Estudo")
         
-        # Disposição vertical das métricas principais
-        col_res = st.columns([1, 2])
-        with col_res[0]:
+        col_res_v = st.columns([1, 2])
+        with col_res_v[0]:
             st.metric("Corrente de Arco (Iarc)", f"{i_arc:.3f} kA")
             st.metric("Fronteira de Arco (DLA)", f"{dla:.1f} mm")
             st.metric("Energia Incidente", f"{e_trab_cal:.4f} cal/cm²")
             st.metric("Energia Incidente", f"{e_trab_joule:.2f} J/cm²")
             
-            st.info(f"**Vestimenta (Norma):** {v_norma}")
-            st.success(f"**Vestimenta (Segurança):** {v_seguranca}")
+            st.info(f"**Vestimenta (Conforme Cálculo):** {v_norma}")
+            st.success(f"**Vestimenta (Princípio de Segurança Normativo):** {v_seguranca}")
 
-        with col_res[1]:
+        with col_res_v[1]:
             st.write("#### Sensibilidade de Afastamento")
             st.table(pd.DataFrame(sens_list, columns=["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]))
 
@@ -190,8 +189,8 @@ with tab3:
             
             elementos.append(Spacer(1, 0.3*cm))
             elementos.append(Paragraph(
-                f"Pela classificação da norma, a vestimenta requerida é <b>{r['V_norma']}</b>. "
-                f"Considerando princípios de segurança e o limiar de queimadura, recomenda-se <b>{r['V_seguranca']}</b>.", style_just))
+                f"Pela classificação conforme cálculo, a vestimenta requerida é <b>{r['V_norma']}</b>. "
+                f"Considerando o princípio de segurança normativo e o limiar de queimadura, recomenda-se <b>{r['V_seguranca']}</b>.", style_just))
 
             elementos.append(Spacer(1, 0.5*cm))
             elementos.append(Paragraph("<b>3. TABELA DE SENSIBILIDADE</b>", styles['Heading2']))
