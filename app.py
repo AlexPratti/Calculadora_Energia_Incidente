@@ -38,7 +38,13 @@ with st.sidebar:
         
         if lista_db:
             opcoes = {f"{c['tag_painel']} ({c['icc_ka']} kA)": c for c in lista_db}
-            selecao = st.selectbox("Selecione um CCM calculado:", ["-- Entrada Manual --"] + list(opcoes.keys()))
+            
+            # ADICIONADO O PARÂMETRO key="import_ccm_unique" PARA RESOLVER O ERRO
+            selecao = st.selectbox(
+                "Selecione um CCM calculado:", 
+                ["-- Entrada Manual --"] + list(opcoes.keys()),
+                key="import_ccm_unique" 
+            )
             
             if selecao != "-- Entrada Manual --":
                 icc_sugerida = float(opcoes[selecao]['icc_ka'])
@@ -46,6 +52,7 @@ with st.sidebar:
                 st.success(f"✅ Dados de {selecao} carregados!")
     except Exception as e:
         st.error(f"Erro ao importar: {e}")
+
 
 
 # Inicializamos as variáveis com valores padrão (caso o usuário queira digitar manual)
