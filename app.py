@@ -84,14 +84,18 @@ with tab1:
     val_a, val_l, val_p, val_sinal = info["dims"][sel_dim]
 
     st.write("#### Ajuste Manual de Dimensões")
-    c1, c2 = st.columns(2)
+    
+    # Criando 4 colunas para Altura, Largura, Sinal de P e Valor de P ficarem na mesma linha
+    c1, c2, c3, c4 = st.columns([2, 2, 1, 2])
+    
     alt = c1.number_input("Altura [A] (mm)", value=float(val_a), key="manual_alt")
     larg = c2.number_input("Largura [L] (mm)", value=float(val_l), key="manual_larg")
     
-    st.write("Profundidade [P] (mm)")
-    cp1, cp2 = st.columns([1, 4]) # Proporção 1:4 para o sinal ficar compacto à esquerda
-    sinal_final = cp1.selectbox("Sinal", ["", "≤", ">"], index=["", "≤", ">"].index(val_sinal), key="manual_sinal")
-    prof = cp2.number_input("Valor P", value=float(val_p), label_visibility="collapsed", key="manual_prof")
+    sinal_op = ["", "≤", ">"]
+    idx_sinal = sinal_op.index(val_sinal) if val_sinal in sinal_op else 0
+    sinal_final = c3.selectbox("Sinal P", sinal_op, index=idx_sinal, key="manual_sinal")
+    
+    prof = c4.number_input("Profundidade [P] (mm)", value=float(val_p), key="manual_prof")
 
     st.divider()
     st.write("#### Parâmetros da Tabela 3")
@@ -111,6 +115,7 @@ with tab2:
         
         ees = (alt/25.4 + larg/25.4) / 2.0
         cf = -0.0003*ees**2 + 0.03441*ees + 0.4325
+        
         ia_sts = [calc_ia_step(i_bf, gap_f, k_ia[v]) for v in [600, 2700, 14300]]
         en_sts = [calc_en_step(ia, i_bf, gap_f, dist_f, t_arc, k_en[v], cf) for ia, v in zip(ia_sts, [600, 2700, 14300])]
         
