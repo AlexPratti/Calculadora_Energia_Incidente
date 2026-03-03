@@ -140,18 +140,22 @@ with tab2:
         }
         
         st.divider()
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Corrente de Arco (Iarc)", f"{i_arc:.3f} kA")
-        m2.metric("Energia Incidente", f"{e_trab_cal:.4f} cal/cm²")
-        m3.metric("Energia Incidente", f"{e_trab_joule:.2f} J/cm²")
+        st.subheader("Resultados do Estudo")
         
-        m4, m5, m6 = st.columns(3)
-        m4.metric("Fronteira de Arco (DLA)", f"{dla:.1f} mm")
-        m5.info(f"**Vestimenta (Norma):** {v_norma}")
-        m6.success(f"**Vestimenta (Segurança):** {v_seguranca}")
+        # Disposição vertical das métricas principais
+        col_res = st.columns([1, 2])
+        with col_res[0]:
+            st.metric("Corrente de Arco (Iarc)", f"{i_arc:.3f} kA")
+            st.metric("Fronteira de Arco (DLA)", f"{dla:.1f} mm")
+            st.metric("Energia Incidente", f"{e_trab_cal:.4f} cal/cm²")
+            st.metric("Energia Incidente", f"{e_trab_joule:.2f} J/cm²")
+            
+            st.info(f"**Vestimenta (Norma):** {v_norma}")
+            st.success(f"**Vestimenta (Segurança):** {v_seguranca}")
 
-        st.write("#### Sensibilidade até a Fronteira")
-        st.table(pd.DataFrame(sens_list, columns=["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]))
+        with col_res[1]:
+            st.write("#### Sensibilidade de Afastamento")
+            st.table(pd.DataFrame(sens_list, columns=["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]))
 
 with tab3:
     if 'res' in st.session_state:
