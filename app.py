@@ -13,14 +13,41 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.pdfgen import canvas
 
 # --- 1. CONFIGURAÇÃO E CONEXÃO ---
-st.set_page_config(page_title="NBR 17227 - Relatório Técnico Profissional", layout="wide")
 
+# --- CONEXÃO (Use as chaves que você já tem no código de Energia) ---
+st.set_page_config(page_title="NBR 17227 - Relatório Técnico Profissional", layout="wide")
 URL_SUPABASE = "https://lfgqxphittdatzknwkqw.supabase.co" 
 KEY_SUPABASE = "sb_publishable_zLiarara0IVVcwQm6oR2IQ_Sb0YOWTe" 
+supabase: Client = create_client(URL_SUPABASE, KEY_SUPABASE)
 
 if "supabase" not in st.session_state:
     st.session_state.supabase = create_client(URL_SUPABASE, KEY_SUPABASE)
 supabase = st.session_state.supabase
+
+# --- BUSCA DADOS DO CURTO-CIRCUITO ---
+st.sidebar.header("📥 Importar Dados do Curto-Circuito")
+
+# Inicializamos as variáveis com valores padrão (caso o usuário queira digitar manual)
+icc_sugerida = 0.0
+v_sugerida = 380.0
+
+try:
+    # Busca os últimos 10 CCMs salvos pelo outro App
+    res = supabase.table("calculos_curto").select("*").order("created_at", desc=True).limit(10).execute()
+    lista_db = res.data
+    
+    if lista_db:
+        # Cria um dicionário para facilitar a busca pelo nome do CCM
+        opcoes = {f"{c['tag_painel']} ({c['icc_ka']} kA)": c for c in lista_db}
+        selecao = st.sidebar.selectbox("Selecione um CCM calculado:", ["-- Entrada Manual --"] + list(opcoes.keys()))
+        
+        if selecao != "-- Entrada Manual --":
+            icc_sugerida = float(opcoes[selecao]['icc_ka'])
+            v_sugerida = float(opcoes[selecao]['v_sec'])
+            st.sidebar.success(f"✅ Dados de {selecao} carregados!")
+except Exception as e:
+    st.sidebar.error(f"Erro ao ler banco: {e}")
+
 
 # --- 2. FUNÇÕES TÉCNICAS (NBR 17227:2025) ---
 def calc_ia_step(ibf, g, k):
