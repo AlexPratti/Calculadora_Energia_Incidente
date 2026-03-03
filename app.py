@@ -12,6 +12,7 @@ from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER, TA_LEFT
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether, ListFlowable, ListItem
 from reportlab.pdfgen import canvas
 
+st.sidebar.write("Teste de Conexão com o Banco")
 # --- 1. CONFIGURAÇÃO E CONEXÃO ---
 
 # --- CONEXÃO (Use as chaves que você já tem no código de Energia) ---
