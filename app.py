@@ -47,6 +47,13 @@ def interpolar(v, f600, f2700, f14300):
     if v <= 2.7: return f600 + (f2700 - f600) * (v - 0.6) / 2.1
     return f2700 + (f14300 - f2700) * (v - 2.7) / 11.6
 
+def definir_vestimenta(caloria):
+    if caloria < 1.2: return "SEGURO"
+    if caloria <= 4: return "CAT 1"
+    if caloria <= 8: return "CAT 2"
+    if caloria <= 25: return "CAT 3"
+    return "CAT 4"
+
 # --- 3. SISTEMA DE LOGIN ---
 if 'auth' not in st.session_state: st.session_state['auth'] = None
 if st.session_state['auth'] is None:
@@ -99,7 +106,7 @@ with tab2:
     v_oc = col1.number_input("Tensão Voc (kV)", 0.208, 15.0, 13.8)
     i_bf = col2.number_input("Corrente Ibf (kA)", 0.5, 106.0, 4.85)
     t_arc = col3.number_input("Tempo T (ms)", 10.0, 5000.0, 488.0)
-    
+
     if st.button("Executar Estudo"):
         k_v = [0.6, 2.7, 14.3]
         k_ia = {0.6: [-0.04287, 1.035, -0.083, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092], 2.7: [0.0065, 1.001, -0.024, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729], 14.3: [0.005795, 1.015, -0.011, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729]}
@@ -118,16 +125,31 @@ with tab2:
         for d in d_pontos:
             e_sts_temp = [calc_en_step(ia, i_bf, gap_f, d, t_arc, k_en[v], cf) for ia, v in zip(ia_sts, k_v)]
             e_v = interpolar(v_oc, *e_sts_temp) / 4.184
-            c_v = "CAT 1" if e_v <= 4 else "CAT 2" if e_v <= 8 else "CAT 4"
-            if e_v < 1.2: c_v = "SEGURO"
+            c_v = definir_vestimenta(e_v)
             sens_list.append([round(d, 1), round(e_v, 4), c_v])
         
-        e_trab = sens_list[0][1]
-        st.session_state['res'] = {"I": i_arc, "D": dla, "E": e_trab, "Sens": sens_list, "Equip": equip_sel}
+        e_trab_cal = sens_list[0][1]
+        e_trab_joule = e_trab_cal * 4.184
+        v_norma = definir_vestimenta(e_trab_cal)
+        v_seguranca = "CAT 2" if (1.2 < e_trab_cal <= 4) else v_norma
+        
+        st.session_state['res'] = {
+            "I": i_arc, "D": dla, "E_cal": e_trab_cal, "E_joule": e_trab_joule,
+            "V_norma": v_norma, "V_seguranca": v_seguranca,
+            "Sens": sens_list, "Equip": equip_sel
+        }
         
         st.divider()
-        st.metric("Corrente de Arco (Iarc)", f"{i_arc:.3f} kA")
-        st.metric("Fronteira de Arco (DLA)", f"{dla:.1f} mm")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Corrente de Arco (Iarc)", f"{i_arc:.3f} kA")
+        m2.metric("Energia Incidente", f"{e_trab_cal:.4f} cal/cm²")
+        m3.metric("Energia Incidente", f"{e_trab_joule:.2f} J/cm²")
+        
+        m4, m5, m6 = st.columns(3)
+        m4.metric("Fronteira de Arco (DLA)", f"{dla:.1f} mm")
+        m5.info(f"**Vestimenta (Norma):** {v_norma}")
+        m6.success(f"**Vestimenta (Segurança):** {v_seguranca}")
+
         st.write("#### Sensibilidade até a Fronteira")
         st.table(pd.DataFrame(sens_list, columns=["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]))
 
@@ -136,64 +158,52 @@ with tab3:
         r = st.session_state['res']
         col_c1, col_c2 = st.columns(2)
         uf_crea = col_c1.text_input("UF CREA:", "ES")
-        num_crea = col_f2 = col_c2.text_input("Número CREA:", "")
+        num_crea = col_c2.text_input("Número CREA:", "")
 
         def gerar_pdf_profissional():
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
             styles = getSampleStyleSheet()
-            
-            # Estilo Justificado
             style_just = ParagraphStyle(name='Justify', parent=styles['Normal'], alignment=TA_JUSTIFY, leading=14)
             elementos = []
 
             elementos.append(Paragraph("<font size=16><b>RELATÓRIO TÉCNICO DE ESTUDO DE ARCO ELÉTRICO</b></font>", styles['Title']))
-            elementos.append(Paragraph("Emitido em: Data: __/__/____", styles['Normal']))
+            elementos.append(Paragraph(f"Emitido em: {datetime.now().strftime('%d/%m/%Y')}", styles['Normal']))
             elementos.append(Spacer(1, 1*cm))
 
-            # 1. Memorial Justificado
             elementos.append(Paragraph("<b>1. MEMORIAL DE CÁLCULO (NBR 17227:2025)</b>", styles['Heading2']))
             elementos.append(Paragraph(
-                "A metodologia de cálculo aplicada segue rigorosamente a norma <b>NBR 17227:2025</b> para painéis em espaços confinados. "
-                "Foram executados cálculos de Corrente de Arco ($I_{arc}$) via interpolação polinomial e determinação da Energia Incidente ($E_{cal}$) "
-                "com ajuste do fator de borda ($C_f$) para refletir a geometria real do invólucro.", style_just))
+                "A metodologia aplicada segue a <b>NBR 17227:2025</b>. Foram executados cálculos de Corrente de Arco via interpolação polinomial "
+                "e determinação da Energia Incidente com ajuste do fator de borda para a geometria do invólucro.", style_just))
 
-            # 2. Análise Justificada
             elementos.append(Spacer(1, 0.5*cm))
             elementos.append(Paragraph("<b>2. ANÁLISE DO RESULTADO</b>", styles['Heading2']))
-            c_norma = "CAT 1" if r['E'] <= 4 else "CAT 2"
-            c_segur = "CAT 2" if (r['E'] > 1.2 and r['E'] <= 8) else c_norma
             elementos.append(Paragraph(
-                f"O estudo para o equipamento <b>{r['Equip']}</b> resultou em uma energia incidente de <b>{r['E']:.4f} cal/cm²</b>. "
-                f"Pela classificação estrita da norma, a vestimenta seria {c_norma}. Contudo, visando a proteção contra o limiar de queimadura "
-                f"de 2º grau (1,2 cal/cm²), recomenda-se a utilização da vestimenta <b>{c_segur}</b> para maior margem de segurança operacional.", style_just))
+                f"Equipamento: <b>{r['Equip']}</b><br/>"
+                f"Corrente de Arco: <b>{r['I']:.3f} kA</b><br/>"
+                f"Energia Incidente: <b>{r['E_cal']:.4f} cal/cm²</b> ({r['E_joule']:.2f} J/cm²)<br/>"
+                f"Fronteira de Arco (DLA): <b>{r['D']:.1f} mm</b>", style_just))
+            
+            elementos.append(Spacer(1, 0.3*cm))
+            elementos.append(Paragraph(
+                f"Pela classificação da norma, a vestimenta requerida é <b>{r['V_norma']}</b>. "
+                f"Considerando princípios de segurança e o limiar de queimadura, recomenda-se <b>{r['V_seguranca']}</b>.", style_just))
 
-            # Tabela de Sensibilidade no PDF
             elementos.append(Spacer(1, 0.5*cm))
-            elementos.append(Paragraph("<b>4. TABELA DE SENSIBILIDADE (AFASTAMENTO)</b>", styles['Heading2']))
+            elementos.append(Paragraph("<b>3. TABELA DE SENSIBILIDADE</b>", styles['Heading2']))
             data_tab = [["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]] + r['Sens']
             t = Table(data_tab, colWidths=[5*cm, 5*cm, 5*cm])
             t.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.whitesmoke, colors.white])
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey)
             ]))
             elementos.append(t)
 
-            # 3. EPIs
-            elementos.append(Spacer(1, 0.5*cm))
-            elementos.append(Paragraph("<b>3. EQUIPAMENTOS DE PROTEÇÃO (EPI) REQUERIDOS</b>", styles['Heading2']))
-            elementos.append(Paragraph(
-                "• Vestimenta FR/AR conforme categoria recomendada;<br/>• Protetor facial contra arco elétrico;<br/>• Balaclava ignífuga;<br/>• Luvas isolantes de borracha e cobertura em couro;<br/>• Calçado de segurança sem componentes metálicos.", style_just))
-
-            # Assinatura
             elementos.append(Spacer(1, 2*cm))
             elementos.append(Paragraph("________________________________________________", styles['Normal']))
-            elementos.append(Paragraph("<b>Engenheiro Eletricista</b>", styles['Normal']))
-            elementos.append(Paragraph(f"CREA: {uf_crea} - {num_crea}", styles['Normal']))
+            elementos.append(Paragraph(f"<b>Engenheiro Eletricista - CREA {uf_crea}/{num_crea}</b>", styles['Normal']))
 
             doc.build(elementos); return buffer.getvalue()
 
