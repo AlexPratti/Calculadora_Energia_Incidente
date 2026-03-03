@@ -78,29 +78,48 @@ tab1, tab2, tab3 = st.tabs(["Equipamento/Dimensões", "Cálculos e Resultados", 
 
 with tab1:
     st.subheader("Configuração do Equipamento")
-    equip_sel = st.selectbox("Selecione o Equipamento (Tab. 3):", list(equip_data.keys()), key="main_equip_sel")
+    
+    # Callback para resetar valores quando o equipamento muda
+    def update_dims():
+        info = equip_data[st.session_state.main_equip_sel]
+        sel_dim = st.session_state.dim_sel_box
+        val_a, val_l, val_p, val_sinal = info["dims"][sel_dim]
+        st.session_state.manual_alt = float(val_a)
+        st.session_state.manual_larg = float(val_l)
+        st.session_state.manual_prof = float(val_p)
+        st.session_state.manual_gap = float(info["gap"])
+        st.session_state.manual_dist = float(info["dist"])
+
+    equip_sel = st.selectbox("Selecione o Equipamento (Tab. 3):", list(equip_data.keys()), key="main_equip_sel", on_change=update_dims)
     info = equip_data[equip_sel]
-    sel_dim = st.selectbox(f"Dimensões para {equip_sel}:", list(info["dims"].keys()), key="dim_sel_box")
+    
+    sel_dim = st.selectbox(f"Dimensões para {equip_sel}:", list(info["dims"].keys()), key="dim_sel_box", on_change=update_dims)
     val_a, val_l, val_p, val_sinal = info["dims"][sel_dim]
 
+    # Inicialização do estado para evitar erros na primeira carga
+    if "manual_alt" not in st.session_state:
+        st.session_state.manual_alt = float(val_a)
+        st.session_state.manual_larg = float(val_l)
+        st.session_state.manual_prof = float(val_p)
+        st.session_state.manual_gap = float(info["gap"])
+        st.session_state.manual_dist = float(info["dist"])
+
     st.write("#### Ajuste Manual de Dimensões")
+    c1, c2, c3, c4 = st.columns(4)
     
-    # Criando 4 colunas para Altura, Largura, Sinal de P e Valor de P ficarem na mesma linha
-    c1, c2, c3, c4 = st.columns([2, 2, 1, 2])
-    
-    alt = c1.number_input("Altura [A] (mm)", value=float(val_a), key="manual_alt")
-    larg = c2.number_input("Largura [L] (mm)", value=float(val_l), key="manual_larg")
+    alt = c1.number_input("Altura [A] (mm)", key="manual_alt")
+    larg = c2.number_input("Largura [L] (mm)", key="manual_larg")
     
     sinal_op = ["", "≤", ">"]
     idx_sinal = sinal_op.index(val_sinal) if val_sinal in sinal_op else 0
     sinal_final = c3.selectbox("Sinal P", sinal_op, index=idx_sinal, key="manual_sinal")
-    
-    prof = c4.number_input("Profundidade [P] (mm)", value=float(val_p), key="manual_prof")
+    prof = c4.number_input("Profundidade [P] (mm)", key="manual_prof")
 
     st.divider()
     st.write("#### Parâmetros da Tabela 3")
-    gap_f = st.number_input("GAP (mm)", value=float(info["gap"]), key="manual_gap")
-    dist_f = st.number_input("Distância de Trabalho (mm)", value=float(info["dist"]), key="manual_dist")
+    c_gap, c_dist = st.columns(2)
+    gap_f = c_gap.number_input("GAP (mm)", key="manual_gap")
+    dist_f = c_dist.number_input("Distância de Trabalho (mm)", key="manual_dist")
 
 with tab2:
     st.subheader("Entrada de Dados e Cálculo")
@@ -113,16 +132,15 @@ with tab2:
         k_ia = {600: [-0.04287, 1.035, -0.083, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092], 2700: [0.0065, 1.001, -0.024, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729], 14300: [0.005795, 1.015, -0.011, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729]}
         k_en = {600: [0.753364, 0.566, 1.752636, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092, 0, -1.598, 0.957], 2700: [2.40021, 0.165, 0.354202, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.569, 0.9778], 14300: [3.825917, 0.11, -0.999749, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.568, 0.99]}
         
-        ees = (alt/25.4 + larg/25.4) / 2.0
+        ees = (st.session_state.manual_alt/25.4 + st.session_state.manual_larg/25.4) / 2.0
         cf = -0.0003*ees**2 + 0.03441*ees + 0.4325
-        
-        ia_sts = [calc_ia_step(i_bf, gap_f, k_ia[v]) for v in [600, 2700, 14300]]
-        en_sts = [calc_en_step(ia, i_bf, gap_f, dist_f, t_arc, k_en[v], cf) for ia, v in zip(ia_sts, [600, 2700, 14300])]
+        ia_sts = [calc_ia_step(i_bf, st.session_state.manual_gap, k_ia[v]) for v in [600, 2700, 14300]]
+        en_sts = [calc_en_step(ia, i_bf, st.session_state.manual_gap, st.session_state.manual_dist, t_arc, k_en[v], cf) for ia, v in zip(ia_sts, [600, 2700, 14300])]
         
         e_cal = interpolar(v_oc, *en_sts) / 4.184
         cat = "CAT 2" if e_cal <= 8 else "CAT 4" if e_cal <= 40 else "EXTREMO RISCO"
         
-        st.session_state['res'] = {"E_cal": e_cal, "Cat": cat, "Equip": equip_sel}
+        st.session_state['res'] = {"E_cal": e_cal, "Cat": cat, "Equip": st.session_state.main_equip_sel}
         st.divider()
         st.metric("Energia Incidente Estimada", f"{e_cal:.4f} cal/cm²")
         st.warning(f"🛡️ Vestimenta recomendada: {cat}")
@@ -137,8 +155,7 @@ with tab3:
             c.setFont("Helvetica", 10)
             c.drawString(2*cm, 25*cm, f"Equipamento: {r['Equip']}")
             c.drawString(2*cm, 24*cm, f"Energia Incidente: {r['E_cal']:.4f} cal/cm²")
-            c.drawString(2*cm, 23*cm, f"Categoria de Risco: {r['Cat']}")
             c.save(); return b.getvalue()
         st.download_button("📩 Baixar Laudo PDF", pdf_gen(), "laudo_arco.pdf", "application/pdf", key="btn_download_pdf")
     else:
-        st.info("⚠️ Por favor, realize o cálculo na Aba 2 antes de gerar o relatório.")
+        st.info("⚠️ Por favor, realize o cálculo na Aba 2 primeiro.")
