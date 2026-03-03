@@ -33,6 +33,14 @@ def calc_en_step(ia, ibf, g, d, t, k, cf):
     exp = (k1 + k2*np.log10(g) + termo_ia + k11*np.log10(ibf) + k12*np.log10(d) + k13*np.log10(ia) + np.log10(1.0/cf))
     return (12.552 / 50.0) * t * (10**exp)
 
+def calc_dla_step(ia, ibf, g, t, k, cf):
+    k1, k2, k3, k4, k5, k6, k7, k8, k9, k10, k11, k12, k13 = k
+    poli_den = (k4*ibf**7 + k5*ibf**6 + k6*ibf**5 + k7*ibf**4 + k8*ibf**3 + k9*ibf**2 + k10*ibf)
+    termo_ia = (k3 * ia) / poli_den if poli_den != 0 else 0
+    # O valor 5.0 representa o limite de 1.2 cal/cm² em Joules/cm² aproximadamente dentro da fórmula
+    log_fixo = (k1 + k2*np.log10(g) + termo_ia + k11*np.log10(ibf) + k13*np.log10(ia) + np.log10(1.0/cf))
+    return 10**((np.log10(5.0 / ((12.552 / 50.0) * t)) - log_fixo) / k12)
+
 def interpolar(v, f600, f2700, f14300):
     if v <= 0.6: return f600
     if v <= 2.7: return f600 + (f2700 - f600) * (v - 0.6) / 2.1
@@ -62,7 +70,7 @@ if st.session_state['auth'] is None:
                 except: st.error("Erro de conexão.")
     st.stop()
 
-# --- 4. BASE DE DADOS FIEL À TABELA 1 DA IMAGEM ---
+# --- 4. BASE DE DADOS (TABELA 1) ---
 equip_data = {
     "CCM 15 kV": {"gap": 152.0, "dist": 914.4, "dims": {"(A) 914,4 x (L) 914,4 x (P) 914,4": [914.4, 914.4, 914.4, ""]}},
     "Conjunto de manobra 15 kV": {"gap": 152.0, "dist": 914.4, "dims": {"(A) 1143 x (L) 762 x (P) 762": [1143.0, 762.0, 762.0, ""]}},
@@ -82,7 +90,6 @@ with tab1:
     
     def update_safe():
         e_info = equip_data[st.session_state.main_equip_sel]
-        # Garante que a dimensão selecionada pertença ao novo equipamento
         if st.session_state.dim_sel_box not in e_info["dims"]:
             st.session_state.dim_sel_box = list(e_info["dims"].keys())[0]
         
@@ -98,7 +105,6 @@ with tab1:
     info = equip_data[equip_sel]
     sel_dim = st.selectbox(f"Dimensões para {equip_sel}:", list(info["dims"].keys()), key="dim_sel_box", on_change=update_safe)
     
-    # Inicialização forçada
     if "manual_alt" not in st.session_state:
         v_a, v_l, v_p, v_s = info["dims"][sel_dim]
         st.session_state.manual_alt, st.session_state.manual_larg, st.session_state.manual_prof = float(v_a), float(v_l), float(v_p)
@@ -112,13 +118,13 @@ with tab1:
     prof = c4.number_input("Profundidade [P] (mm)", key="manual_prof")
 
     st.divider()
-    st.write("#### Parâmetros da Tabela 3")
+    st.write("#### Parâmetros de Instalação (Tab. 3)")
     cg, cd = st.columns(2)
     gap_f = cg.number_input("GAP (mm)", key="manual_gap")
     dist_f = cd.number_input("Distância de Trabalho (mm)", key="manual_dist")
 
 with tab2:
-    st.subheader("Cálculos")
+    st.subheader("Cálculos Técnicos")
     col1, col2, col3 = st.columns(3)
     v_oc = col1.number_input("Tensão Voc (kV)", 0.208, 15.0, 13.8, key="calc_voc")
     i_bf = col2.number_input("Corrente Ibf (kA)", 0.5, 106.0, 4.85, key="calc_ibf")
@@ -129,16 +135,32 @@ with tab2:
         k_ia = {600: [-0.04287, 1.035, -0.083, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092], 2700: [0.0065, 1.001, -0.024, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729], 14300: [0.005795, 1.015, -0.011, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729]}
         k_en = {600: [0.753364, 0.566, 1.752636, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092, 0, -1.598, 0.957], 2700: [2.40021, 0.165, 0.354202, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.569, 0.9778], 14300: [3.825917, 0.11, -0.999749, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.568, 0.99]}
         
+        # Efeito de Borda
         ees = (st.session_state.manual_alt/25.4 + st.session_state.manual_larg/25.4) / 2.0
         cf = -0.0003*ees**2 + 0.03441*ees + 0.4325
-        ia_sts = [calc_ia_step(i_bf, st.session_state.manual_gap, k_ia[v]) for v in k_v]
-        en_sts = [calc_en_step(ia, i_bf, st.session_state.manual_gap, st.session_state.manual_dist, t_arc, k_en[v], cf) for ia, v in zip(ia_sts, k_v)]
         
+        # 1. Corrente de Arco (Iarc)
+        ia_sts = [calc_ia_step(i_bf, st.session_state.manual_gap, k_ia[v]) for v in k_v]
+        i_arc_final = interpolar(v_oc, *ia_sts)
+        
+        # 2. Energia Incidente (Ecal)
+        en_sts = [calc_en_step(ia, i_bf, st.session_state.manual_gap, st.session_state.manual_dist, t_arc, k_en[v], cf) for ia, v in zip(ia_sts, k_v)]
         e_cal = interpolar(v_oc, *en_sts) / 4.184
+        
+        # 3. Distância Limite de Arco (Fronteira)
+        dl_sts = [calc_dla_step(ia, i_bf, st.session_state.manual_gap, t_arc, k_en[v], cf) for ia, v in zip(ia_sts, k_v)]
+        dla_final = interpolar(v_oc, *dl_sts)
+        
         cat = "CAT 2" if e_cal <= 8 else "CAT 4" if e_cal <= 40 else "EXTREMO RISCO"
         
-        st.session_state['res'] = {"E_cal": e_cal, "Cat": cat, "Equip": st.session_state.main_equip_sel}
-        st.metric("Energia Incidente", f"{e_cal:.4f} cal/cm²")
+        st.session_state['res'] = {"E_cal": e_cal, "Cat": cat, "Iarc": i_arc_final, "DLA": dla_final, "Equip": st.session_state.main_equip_sel}
+        
+        st.divider()
+        c1, c2 = st.columns(2)
+        c1.metric("Corrente Final de Arco (Iarc)", f"{i_arc_final:.3f} kA")
+        c2.metric("Fronteira de Arco (DLA)", f"{dla_final:.1f} mm")
+        
+        st.metric("Energia Incidente Estimada", f"{e_cal:.4f} cal/cm²")
         st.warning(f"🛡️ Vestimenta recomendada: {cat}")
 
 with tab3:
@@ -147,9 +169,14 @@ with tab3:
         st.write(f"### Laudo Técnico: {r['Equip']}")
         def pdf_gen():
             b = io.BytesIO(); c = canvas.Canvas(b, pagesize=A4)
-            c.drawString(2*cm, 25*cm, f"Equipamento: {r['Equip']}")
-            c.drawString(2*cm, 24*cm, f"Energia Incidente: {r['E_cal']:.4f} cal/cm²")
+            c.setFont("Helvetica-Bold", 14); c.drawString(2*cm, 27*cm, "LAUDO DE ARCO ELÉTRICO NBR 17227")
+            c.setFont("Helvetica", 10)
+            c.drawString(2*cm, 25.5*cm, f"Equipamento: {r['Equip']}")
+            c.drawString(2*cm, 24.5*cm, f"Corrente de Arco (Iarc): {r['Iarc']:.3f} kA")
+            c.drawString(2*cm, 23.5*cm, f"Fronteira de Arco (DLA): {r['DLA']:.1f} mm")
+            c.drawString(2*cm, 22.5*cm, f"Energia Incidente: {r['E_cal']:.4f} cal/cm²")
+            c.drawString(2*cm, 21.5*cm, f"Categoria de Risco: {r['Cat']}")
             c.save(); return b.getvalue()
-        st.download_button("📩 Baixar Laudo PDF", pdf_gen(), "laudo.pdf", key="dl_pdf")
+        st.download_button("📩 Baixar Laudo PDF", pdf_gen(), "laudo_arco.pdf", "application/pdf", key="dl_pdf")
     else:
         st.info("⚠️ Realize o cálculo na Aba 2 primeiro.")
