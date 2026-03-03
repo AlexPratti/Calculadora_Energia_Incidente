@@ -12,7 +12,7 @@ from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER, TA_LEFT
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether, ListFlowable, ListItem
 from reportlab.pdfgen import canvas
 
-st.sidebar.write("Teste de Conexão com o Banco")
+# st.sidebar.write("Teste de Conexão com o Banco")
 # --- 1. CONFIGURAÇÃO E CONEXÃO ---
 
 # --- 1. CONEXÃO ÚNICA COM O BANCO DE DADOS ---
