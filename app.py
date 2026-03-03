@@ -79,50 +79,47 @@ tab1, tab2, tab3 = st.tabs(["Equipamento/Dimensões", "Cálculos e Resultados", 
 with tab1:
     st.subheader("Configuração do Equipamento")
     
-    # Callback para resetar valores quando o equipamento muda
-    def update_dims():
-        info = equip_data[st.session_state.main_equip_sel]
-        sel_dim = st.session_state.dim_sel_box
-        val_a, val_l, val_p, val_sinal = info["dims"][sel_dim]
+    # Função para atualizar dimensões de forma segura (sem KeyError)
+    def update_safe():
+        e_info = equip_data[st.session_state.main_equip_sel]
+        # Se a dimensão atual não existe no novo equipamento, pega a primeira disponível
+        if st.session_state.dim_sel_box not in e_info["dims"]:
+            new_dim = list(e_info["dims"].keys())[0]
+            st.session_state.dim_sel_box = new_dim
+        
+        val_a, val_l, val_p, val_sinal = e_info["dims"][st.session_state.dim_sel_box]
         st.session_state.manual_alt = float(val_a)
         st.session_state.manual_larg = float(val_l)
         st.session_state.manual_prof = float(val_p)
-        st.session_state.manual_gap = float(info["gap"])
-        st.session_state.manual_dist = float(info["dist"])
+        st.session_state.manual_gap = float(e_info["gap"])
+        st.session_state.manual_dist = float(e_info["dist"])
+        st.session_state.manual_sinal = val_sinal
 
-    equip_sel = st.selectbox("Selecione o Equipamento (Tab. 3):", list(equip_data.keys()), key="main_equip_sel", on_change=update_dims)
+    equip_sel = st.selectbox("Selecione o Equipamento (Tab. 3):", list(equip_data.keys()), key="main_equip_sel", on_change=update_safe)
     info = equip_data[equip_sel]
+    sel_dim = st.selectbox(f"Dimensões para {equip_sel}:", list(info["dims"].keys()), key="dim_sel_box", on_change=update_safe)
     
-    sel_dim = st.selectbox(f"Dimensões para {equip_sel}:", list(info["dims"].keys()), key="dim_sel_box", on_change=update_dims)
-    val_a, val_l, val_p, val_sinal = info["dims"][sel_dim]
-
-    # Inicialização do estado para evitar erros na primeira carga
+    # Inicialização forçada na primeira execução
     if "manual_alt" not in st.session_state:
-        st.session_state.manual_alt = float(val_a)
-        st.session_state.manual_larg = float(val_l)
-        st.session_state.manual_prof = float(val_p)
-        st.session_state.manual_gap = float(info["gap"])
-        st.session_state.manual_dist = float(info["dist"])
+        v_a, v_l, v_p, v_s = info["dims"][sel_dim]
+        st.session_state.manual_alt, st.session_state.manual_larg, st.session_state.manual_prof = float(v_a), float(v_l), float(v_p)
+        st.session_state.manual_gap, st.session_state.manual_dist, st.session_state.manual_sinal = float(info["gap"]), float(info["dist"]), v_s
 
     st.write("#### Ajuste Manual de Dimensões")
     c1, c2, c3, c4 = st.columns(4)
-    
     alt = c1.number_input("Altura [A] (mm)", key="manual_alt")
     larg = c2.number_input("Largura [L] (mm)", key="manual_larg")
-    
-    sinal_op = ["", "≤", ">"]
-    idx_sinal = sinal_op.index(val_sinal) if val_sinal in sinal_op else 0
-    sinal_final = c3.selectbox("Sinal P", sinal_op, index=idx_sinal, key="manual_sinal")
+    sinal_final = c3.selectbox("Sinal P", ["", "≤", ">"], key="manual_sinal")
     prof = c4.number_input("Profundidade [P] (mm)", key="manual_prof")
 
     st.divider()
     st.write("#### Parâmetros da Tabela 3")
-    c_gap, c_dist = st.columns(2)
-    gap_f = c_gap.number_input("GAP (mm)", key="manual_gap")
-    dist_f = c_dist.number_input("Distância de Trabalho (mm)", key="manual_dist")
+    cg, cd = st.columns(2)
+    gap_f = cg.number_input("GAP (mm)", key="manual_gap")
+    dist_f = cd.number_input("Distância de Trabalho (mm)", key="manual_dist")
 
 with tab2:
-    st.subheader("Entrada de Dados e Cálculo")
+    st.subheader("Cálculos")
     col1, col2, col3 = st.columns(3)
     v_oc = col1.number_input("Tensão Voc (kV)", 0.208, 15.0, 13.8, key="calc_voc")
     i_bf = col2.number_input("Corrente Ibf (kA)", 0.5, 106.0, 4.85, key="calc_ibf")
@@ -141,21 +138,16 @@ with tab2:
         cat = "CAT 2" if e_cal <= 8 else "CAT 4" if e_cal <= 40 else "EXTREMO RISCO"
         
         st.session_state['res'] = {"E_cal": e_cal, "Cat": cat, "Equip": st.session_state.main_equip_sel}
-        st.divider()
-        st.metric("Energia Incidente Estimada", f"{e_cal:.4f} cal/cm²")
+        st.metric("Energia Incidente", f"{e_cal:.4f} cal/cm²")
         st.warning(f"🛡️ Vestimenta recomendada: {cat}")
 
 with tab3:
     if 'res' in st.session_state:
         r = st.session_state['res']
-        st.write(f"### Laudo Técnico: {r['Equip']}")
+        st.write(f"### Laudo: {r['Equip']}")
         def pdf_gen():
             b = io.BytesIO(); c = canvas.Canvas(b, pagesize=A4)
-            c.setFont("Helvetica-Bold", 14); c.drawString(2*cm, 27.5*cm, "LAUDO DE ENERGIA INCIDENTE")
-            c.setFont("Helvetica", 10)
             c.drawString(2*cm, 25*cm, f"Equipamento: {r['Equip']}")
             c.drawString(2*cm, 24*cm, f"Energia Incidente: {r['E_cal']:.4f} cal/cm²")
             c.save(); return b.getvalue()
-        st.download_button("📩 Baixar Laudo PDF", pdf_gen(), "laudo_arco.pdf", "application/pdf", key="btn_download_pdf")
-    else:
-        st.info("⚠️ Por favor, realize o cálculo na Aba 2 primeiro.")
+        st.download_button("Baixar PDF", pdf_gen(), "laudo.pdf", key="dl_pdf")
