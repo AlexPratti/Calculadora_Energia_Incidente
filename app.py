@@ -68,7 +68,7 @@ if st.session_state['auth'] is None:
         else:
             try:
                 res = supabase.table("usuarios").select("*").eq("email", u).eq("senha", p).execute()
-                if res.data and res.data['status'] == 'ativo':
+                if res.data and res.data[0]['status'] == 'ativo':
                     st.session_state['auth'] = {"role": "user", "user": u}
                     st.rerun()
                 else: st.error("Acesso negado ou pendente.")
@@ -124,22 +124,33 @@ with tab2:
         for d in np.linspace(dist_f, dla, 5):
             e_sts_temp = [calc_en_step(ia, i_bf, gap_f, d, t_arc, k_en[v], cf) for ia, v in zip(ia_sts, k_v)]
             e_v = interpolar(v_oc, *e_sts_temp) / 4.184
-            sens_list.append([round(d, 1), round(e_v, 4), definir_vestimenta(e_v)])
+            # Para alinhar à esquerda no Streamlit, transformamos em string
+            sens_list.append([str(round(d, 1)), str(round(e_v, 4)), definir_vestimenta(e_v)])
         
-        e_ponto_trabalho = sens_list[0][1]
-        v_norma = definir_vestimenta(e_ponto_trabalho)
-        v_seguranca = "CAT 2" if (1.2 < e_ponto_trabalho <= 4) else v_norma
+        e_trab_cal = float(sens_list[0][1])
+        v_norma = definir_vestimenta(e_trab_cal)
+        v_seguranca = "CAT 2" if (1.2 < e_trab_cal <= 4) else v_norma
         
-        st.session_state['res'] = {"I": i_arc, "D": dla, "E_cal": e_ponto_trabalho, "E_joule": e_ponto_trabalho*4.184, "V_norma": v_norma, "V_seguranca": v_seguranca, "Sens": sens_list, "Equip": equip_sel, "Gap": gap_f, "Dist": dist_f}
+        st.session_state['res'] = {"I": i_arc, "D": dla, "E_cal": e_trab_cal, "E_joule": e_trab_cal*4.184, "V_norma": v_norma, "V_seguranca": v_seguranca, "Sens": sens_list, "Equip": equip_sel, "Gap": gap_f, "Dist": dist_f}
         
         st.divider()
-        st.metric("Corrente de Arco (Iarc)", f"{i_arc:.3f} kA")
-        st.metric("Fronteira de Arco (DLA)", f"{dla:.1f} mm")
-        st.write("#### Distância X Energia Incidente")
-        st.table(pd.DataFrame(sens_list, columns=["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]))
-        st.metric("Energia Incidente", f"{e_ponto_trabalho:.4f} cal/cm²")
-        st.metric("Energia Incidente", f"{e_ponto_trabalho*4.184:.2f} J/cm²")
-        st.info(f"**Vestimenta (Conforme Cálculo):** {v_norma}"); st.success(f"**Vestimenta (Princípio de Segurança Normativo):** {v_seguranca}")
+        st.subheader("Resultados do Estudo")
+        
+        # Colunas de largura reduzida (1:2 para a tabela não ocupar a tela toda)
+        col_tab, _ = st.columns([1, 1.5])
+        
+        with col_tab:
+            st.metric("Corrente de Arco (Iarc)", f"{i_arc:.3f} kA")
+            st.metric("Fronteira de Arco (DLA)", f"{dla:.1f} mm")
+            
+            st.write("#### Distância X Energia Incidente")
+            # Exibe a tabela alinhada à esquerda
+            df_display = pd.DataFrame(sens_list, columns=["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"])
+            st.table(df_display)
+
+            st.metric("Energia Incidente", f"{e_trab_cal:.4f} cal/cm²")
+            st.metric("Energia Incidente", f"{e_trab_cal*4.184:.2f} J/cm²")
+            st.info(f"**Vestimenta (Conforme Cálculo):** {v_norma}"); st.success(f"**Vestimenta (Princípio de Segurança Normativo):** {v_seguranca}")
 
 with tab3:
     if 'res' in st.session_state:
@@ -165,8 +176,7 @@ with tab3:
                     canvas.Canvas.showPage(self)
 
             elements = []
-
-            # --- 1. CAPA ---
+            # CAPA
             elements.append(Spacer(1, 6*cm))
             elements.append(Paragraph("<b>RELATÓRIO TÉCNICO DE CÁLCULO DE ENERGIA INCIDENTE</b>", ParagraphStyle(name='CT', parent=styles['Title'], fontSize=22, alignment=TA_CENTER)))
             elements.append(Spacer(1, 2*cm))
@@ -175,7 +185,7 @@ with tab3:
             elements.append(Paragraph(f"Data de Emissão: {datetime.now().strftime('%d/%m/%Y')}", ParagraphStyle(name='CD', parent=styles['Normal'], fontSize=11, alignment=TA_CENTER)))
             elements.append(PageBreak())
 
-            # --- 2. SUMÁRIO ---
+            # SUMÁRIO
             elements.append(Paragraph("<b>SUMÁRIO</b>", styles['Title']))
             elements.append(Spacer(1, 1.5*cm))
             toc_data = [["1. Memorial de Cálculo (NBR 17227:2025)", "03"], ["2. Análise do Resultado e Parâmetros", "03"], ["3. Recomendação e Justificativa Técnica", "03"], ["4. Equipamentos de Proteção (EPI) Complementares", "04"], ["5. Tabela de Distância X Energia Incidente", "04"], ["6. Disposições Finais e NR-10", "04"]]
@@ -184,45 +194,29 @@ with tab3:
             elements.append(t_toc)
             elements.append(PageBreak())
 
-            # --- 3. CONTEÚDO TÉCNICO ---
+            # CONTEÚDO
             elements.append(Paragraph("<b>1. MEMORIAL DE CÁLCULO (NBR 17227:2025)</b>", style_h2))
             elements.append(Paragraph("A metodologia aplicada segue a norma NBR 17227:2025 para painéis em espaços confinados. O estudo visa determinar a energia incidente para mitigação de riscos elétricos.", style_just))
-
             elements.append(Paragraph("<b>2. ANÁLISE DO RESULTADO E PARÂMETROS</b>", style_h2))
             elements.append(Paragraph(f"• Iarc: <b>{r['I']:.3f} kA</b><br/>• Energia Incidente: <b>{r['E_cal']:.4f} cal/cm²</b> ({r['E_joule']:.2f} J/cm²)<br/>• Fronteira de Arco (DLA): <b>{r['D']:.1f} mm</b><br/>• Gap: <b>{r['Gap']:.1f} mm</b><br/>• Distância de Trabalho: <b>{r['Dist']:.1f} mm</b>", style_just))
-
             elements.append(Paragraph("<b>3. RECOMENDAÇÃO E JUSTIFICATIVA TÉCNICA</b>", style_h2))
-            elements.append(Paragraph(f"Cálculo nominal: {r['V_norma']}. Recomendação final: <b>{r['V_seguranca']}</b>. <br/><b>Justificativa:</b> Gestão de riscos baseada no Princípio ALARA para proteção contra incertezas operacionais.", style_just))
-
+            elements.append(Paragraph(f"Cálculo nominal: {r['V_norma']}. Recomendação final: <b>{r['V_seguranca']}</b>. <br/><b>Justificativa:</b> Gestão de riscos baseada no Princípio ALARA.", style_just))
             elements.append(Paragraph("<b>4. EQUIPAMENTOS DE PROTEÇÃO (EPI) COMPLEMENTARES</b>", style_h2))
-            elements.append(Paragraph("Obrigatório: Protetor facial ATPV, Balaclava ignífuga, Luvas isolantes (borracha + couro) e calçado de segurança.", style_just))
+            elements.append(Paragraph("Obrigatório: Protetor facial ATPV, Balaclava ignífuga, Luvas isolantes e calçado de segurança.", style_just))
 
-            # --- BLOCO FINAL UNIFICADO (Tabela reduzida + NR10 + Assinatura) ---
-            # Reduzimos a fonte da tabela para 9pt e o padding para 4 para ganhar espaço
-            t_data = [["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]] + r['Sens']
-            t_sens = Table(t_data, colWidths=[5*cm]*3)
-            t_sens.setStyle(TableStyle([
-                ('BACKGROUND',(0,0),(-1,0),colors.lightgrey),
-                ('ALIGN',(0,0),(-1,-1),'CENTER'),
-                ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),
-                ('GRID',(0,0),(-1,-1),0.5,colors.grey),
-                ('FONTSIZE',(0,0),(-1,-1), 9), # Tamanho reduzido
-                ('BOTTOMPADDING',(0,0),(-1,-1), 4), # Padding reduzido
-                ('TOPPADDING',(0,0),(-1,-1), 4)
-            ]))
-
-            final_block = [
+            # BLOCO FINAL (Tabela alinhada à esquerda no PDF)
+            t_sens = Table([["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]] + r['Sens'], colWidths=[5*cm]*3)
+            t_sens.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.lightgrey),('ALIGN',(0,0),(-1,-1),'LEFT'),('GRID',(0,0),(-1,-1),0.5,colors.grey),('FONTSIZE',(0,0),(-1,-1), 9),('BOTTOMPADDING',(0,0),(-1,-1), 4),('TOPPADDING',(0,0),(-1,-1), 4)]))
+            
+            elements.append(KeepTogether([
                 Paragraph("<b>5. TABELA DE DISTÂNCIA X ENERGIA INCIDENTE</b>", style_h2),
                 t_sens,
                 Spacer(1, 0.4*cm),
                 Paragraph("<b>6. DISPOSIÇÕES FINAIS E NR-10</b>", style_h2),
-                Paragraph("Em conformidade com a NR-10, o laudo recomenda o uso de vestimentas com CA válido e compatível com o ATPV determinado.", style_just),
+                Paragraph("Conforme NR-10, o laudo recomenda o uso de vestimentas com CA válido.", style_just),
                 Spacer(1, 1.5*cm),
                 Paragraph(f"________________________________________________<br/><b>Engenheiro Eletricista - CREA {uf_c}/{num_c}</b>", ParagraphStyle(name='Sig', parent=styles['Normal'], alignment=TA_CENTER))
-            ]
-            
-            # KeepTogether garante que todo este bloco final fique na mesma página
-            elements.append(KeepTogether(final_block))
+            ]))
 
             doc.build(elements, canvasmaker=CustomCanvas); return buffer.getvalue()
 
