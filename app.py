@@ -8,8 +8,9 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER, TA_LEFT
+from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether
+from reportlab.pdfgen import canvas
 
 # --- 1. CONFIGURAÇÃO E CONEXÃO ---
 st.set_page_config(page_title="NBR 17227 - Relatório Técnico Profissional", layout="wide")
@@ -125,19 +126,19 @@ with tab2:
             e_v = interpolar(v_oc, *e_sts_temp) / 4.184
             sens_list.append([round(d, 1), round(e_v, 4), definir_vestimenta(e_v)])
         
-        e_trab_nominal = sens_list[0][1]
-        v_norma = definir_vestimenta(e_trab_nominal)
-        v_seguranca = "CAT 2" if (1.2 < e_trab_nominal <= 4) else v_norma
+        e_trab = sens_list[0][1]
+        v_norma = definir_vestimenta(e_trab)
+        v_seguranca = "CAT 2" if (1.2 < e_trab <= 4) else v_norma
         
-        st.session_state['res'] = {"I": i_arc, "D": dla, "E_cal": e_trab_nominal, "E_joule": e_trab_nominal*4.184, "V_norma": v_norma, "V_seguranca": v_seguranca, "Sens": sens_list, "Equip": equip_sel, "Gap": gap_f, "Dist": dist_f}
+        st.session_state['res'] = {"I": i_arc, "D": dla, "E_cal": e_trab, "E_joule": e_trab*4.184, "V_norma": v_norma, "V_seguranca": v_seguranca, "Sens": sens_list, "Equip": equip_sel, "Gap": gap_f, "Dist": dist_f}
         
         st.divider()
         st.metric("Corrente de Arco (Iarc)", f"{i_arc:.3f} kA")
         st.metric("Fronteira de Arco (DLA)", f"{dla:.1f} mm")
         st.write("#### Distância X Energia Incidente")
         st.table(pd.DataFrame(sens_list, columns=["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]))
-        st.metric("Energia Incidente", f"{e_trab_nominal:.4f} cal/cm²")
-        st.metric("Energia Incidente", f"{e_trab_nominal*4.184:.2f} J/cm²")
+        st.metric("Energia Incidente", f"{e_trab:.4f} cal/cm²")
+        st.metric("Energia Incidente", f"{e_trab*4.184:.2f} J/cm²")
         st.info(f"**Vestimenta (Conforme Cálculo):** {v_norma}"); st.success(f"**Vestimenta (Princípio de Segurança Normativo):** {v_seguranca}")
 
 with tab3:
@@ -146,71 +147,86 @@ with tab3:
         c1, c2, c3, c4 = st.columns(4)
         cliente = c1.text_input("Cliente:", "Empresa Exemplo S.A.")
         local_eq = c2.text_input("Local:", "Subestação Principal")
-        uf_c = c3.text_input("UF CREA:", "ES")
-        num_c = c4.text_input("Número CREA:", "")
+        uf_c, num_c = c3.text_input("UF CREA:", "ES"), c4.text_input("Número CREA:", "")
 
         def gerar_pdf_profissional():
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2.5*cm, leftMargin=2.5*cm, topMargin=2.5*cm, bottomMargin=2.5*cm)
             styles = getSampleStyleSheet()
             
-            style_cover_title = ParagraphStyle(name='CoverTitle', parent=styles['Title'], fontSize=22, leading=28, alignment=TA_CENTER, spaceBefore=180)
-            style_cover_subtitle = ParagraphStyle(name='CoverSub', parent=styles['Normal'], fontSize=13, alignment=TA_CENTER, spaceBefore=15)
+            # Estilos
             style_just = ParagraphStyle(name='J', parent=styles['Normal'], alignment=TA_JUSTIFY, fontSize=11, leading=16.5)
             style_h2 = ParagraphStyle(name='H2', parent=styles['Heading2'], fontSize=13, leading=18, spaceBefore=15, spaceAfter=10)
             
+            # Classe para paginação
+            class PageNumCanvas(canvas.Canvas):
+                def __init__(self, *args, **kwargs):
+                    canvas.Canvas.__init__(self, *args, **kwargs)
+                    self.pages = []
+                def showPage(self):
+                    self.pages.append(dict(self.__dict__))
+                    self._startPage()
+                def save(self):
+                    page_count = len(self.pages)
+                    for page in self.pages:
+                        self.__dict__.update(page)
+                        self.draw_page_number(page_count)
+                        canvas.Canvas.showPage(self)
+                    canvas.Canvas.save(self)
+                def draw_page_number(self, page_count):
+                    self.setFont("Helvetica", 9)
+                    self.drawRightString(20*cm, 1*cm, f"Página {self._pageNumber} de {page_count}")
+
             elements = []
 
-            # --- CAPA ---
-            elements.append(Paragraph("<b>RELATÓRIO TÉCNICO DE CÁLCULO DE ENERGIA INCIDENTE</b>", style_cover_title))
-            elements.append(Spacer(1, 1*cm))
-            elements.append(Paragraph(f"<b>CLIENTE:</b> {cliente.upper()}", style_cover_subtitle))
-            elements.append(Paragraph(f"<b>LOCAL:</b> {local_eq.upper()}", style_cover_subtitle))
-            elements.append(Paragraph(f"<b>EQUIPAMENTO:</b> {r['Equip'].upper()}", style_cover_subtitle))
-            elements.append(Spacer(1, 8*cm))
-            elements.append(Paragraph(f"Data de Emissão: {datetime.now().strftime('%d/%m/%Y')}", style_cover_subtitle))
+            # CAPA
+            elements.append(Paragraph("<br/><br/><br/><br/><b>RELATÓRIO TÉCNICO DE CÁLCULO DE ENERGIA INCIDENTE</b>", ParagraphStyle(name='CT', parent=styles['Title'], fontSize=22, alignment=TA_CENTER)))
+            elements.append(Spacer(1, 2*cm))
+            elements.append(Paragraph(f"CLIENTE: {cliente.upper()}<br/>LOCAL: {local_eq.upper()}<br/>EQUIPAMENTO: {r['Equip'].upper()}", ParagraphStyle(name='CS', parent=styles['Normal'], fontSize=13, alignment=TA_CENTER, leading=20)))
+            elements.append(Spacer(1, 10*cm))
+            elements.append(Paragraph(f"Data de Emissão: {datetime.now().strftime('%d/%m/%Y')}", ParagraphStyle(name='CD', parent=styles['Normal'], fontSize=11, alignment=TA_CENTER)))
             elements.append(PageBreak())
 
-            # --- SUMÁRIO ---
+            # SUMÁRIO COM PAGINAÇÃO MANUAL (Padrão para 2-3 páginas)
             elements.append(Paragraph("<b>SUMÁRIO</b>", styles['Title']))
             elements.append(Spacer(1, 1*cm))
-            toc_items = ["1. Memorial de Cálculo (NBR 17227:2025)", "2. Análise do Resultado e Parâmetros", "3. Recomendação e Justificativa Técnica", "4. EPIs Complementares Obrigatórios", "5. Tabela de Distância X Energia Incidente", "6. Disposições Finais e NR-10"]
-            for item in toc_items:
-                elements.append(Paragraph(f"{item}", styles['Normal']))
-                elements.append(Spacer(1, 0.3*cm))
+            toc = [
+                ("1. Memorial de Cálculo (NBR 17227:2025)", "03"),
+                ("2. Análise do Resultado e Parâmetros", "03"),
+                ("3. Recomendação e Justificativa Técnica", "03"),
+                ("4. Equipamentos de Proteção (EPI) Complementares", "04"),
+                ("5. Tabela de Distância X Energia Incidente", "04"),
+                ("6. Disposições Finais e NR-10", "04")
+            ]
+            for item, pg in toc:
+                elements.append(Paragraph(f"{item}<font color='white'>{' . ' * 20}</font> {pg}", styles['Normal']))
+                elements.append(Spacer(1, 0.4*cm))
             elements.append(PageBreak())
 
-            # --- CONTEÚDO ---
+            # CONTEÚDO
             elements.append(Paragraph("<b>1. MEMORIAL DE CÁLCULO (NBR 17227:2025)</b>", style_h2))
-            elements.append(Paragraph("A metodologia aplicada segue a norma NBR 17227:2025. Foram executados cálculos de Corrente de Arco via interpolação polinomial e determinação da Energia Incidente com ajuste do fator de borda para a geometria real do invólucro. O objetivo é garantir que a energia que atinge a pele do trabalhador seja inferior a 1,2 cal/cm² (limite de queimadura incurável de 2º grau).", style_just))
+            elements.append(Paragraph("Metodologia baseada na NBR 17227:2025 para painéis em espaços confinados. O cálculo determina a energia incidente máxima para garantir que a exposição do operador não resulte em lesões de segundo grau.", style_just))
 
             elements.append(Paragraph("<b>2. ANÁLISE DO RESULTADO E PARÂMETROS</b>", style_h2))
-            elements.append(Paragraph(f"• Corrente de Arco: <b>{r['I']:.3f} kA</b><br/>• Energia Incidente: <b>{r['E_cal']:.4f} cal/cm²</b> ({r['E_joule']:.2f} J/cm²)<br/>• Fronteira de Arco (DLA): <b>{r['D']:.1f} mm</b><br/>• Gap: <b>{r['Gap']:.1f} mm</b><br/>• Distância de Trabalho: <b>{r['Dist']:.1f} mm</b>", style_just))
+            elements.append(Paragraph(f"• Iarc: <b>{r['I']:.3f} kA</b> | Energia: <b>{r['E_cal']:.4f} cal/cm²</b><br/>• DLA: <b>{r['D']:.1f} mm</b> | Gap: <b>{r['Gap']:.1f} mm</b> | Distância: <b>{r['Dist']:.1f} mm</b>", style_just))
 
             elements.append(Paragraph("<b>3. RECOMENDAÇÃO E JUSTIFICATIVA TÉCNICA</b>", style_h2))
-            elements.append(Paragraph(f"Pela classificação nominal do cálculo, a vestimenta requerida é <b>{r['V_norma']}</b>. Contudo, a recomendação final de proteção é <b>{r['V_seguranca']}</b>. Esta recomendação fundamenta-se na gestão de riscos e margem de segurança operacional (Princípio ALARA). Variações no tempo de atuação da proteção ou no posicionamento do operador podem elevar a energia real, por isso adota-se um fator de segurança conservador.", style_just))
+            elements.append(Paragraph(f"Cálculo nominal: {r['V_norma']}. Recomendação final: <b>{r['V_seguranca']}</b>. Justificativa: Aplicação do Princípio ALARA para margem de segurança contra variações de tempo de arco e posicionamento.", style_just))
 
             elements.append(Paragraph("<b>4. EQUIPAMENTOS DE PROTEÇÃO (EPI) COMPLEMENTARES</b>", style_h2))
-            elements.append(Paragraph("Além da vestimenta retardante de chama (FR/AR) na categoria recomendada, são obrigatórios: Protetor Facial contra Arco Elétrico, Balaclava Ignífuga, Luvas Isolantes de Borracha com luvas de cobertura, Calçado de Segurança sem metal e Proteção Ocular/Auditiva.", style_just))
+            elements.append(Paragraph("Obrigatório uso de: Protetor facial, Balaclava ignífuga, Luvas isolantes (borracha + couro), Calçado de segurança (sem metal) e proteção auricular.", style_just))
 
-            # --- TABELA PROTEGIDA CONTRA QUEBRA ---
-            data_tab = [["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]] + r['Sens']
-            t = Table(data_tab, colWidths=[5*cm, 5*cm, 5*cm])
-            t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('ALIGN', (0,0), (-1,-1), 'CENTER'), ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'), ('GRID', (0,0), (-1,-1), 0.5, colors.grey), ('BOTTOMPADDING', (0,0), (-1,-1), 10), ('TOPPADDING', (0,0), (-1,-1), 10)]))
-            
-            # KeepTogether garante que o título e a tabela fiquem na mesma página
             elements.append(KeepTogether([
                 Paragraph("<b>5. TABELA DE DISTÂNCIA X ENERGIA INCIDENTE</b>", style_h2),
-                t
+                Table([["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]] + r['Sens'], colWidths=[5*cm]*3, style=TableStyle([('BACKGROUND',(0,0),(-1,0),colors.lightgrey),('ALIGN',(0,0),(-1,-1),'CENTER'),('GRID',(0,0),(-1,-1),0.5,colors.grey)]))
             ]))
 
             elements.append(Paragraph("<b>6. DISPOSIÇÕES FINAIS E NR-10</b>", style_h2))
-            elements.append(Paragraph("Este estudo atende às exigências da NR-10. A validade deste relatório está condicionada à manutenção das configurações atuais dos dispositivos de proteção e da integridade física dos equipamentos analisados.", style_just))
+            elements.append(Paragraph("Conforme NR-10, as vestimentas e EPIs devem ser testados e possuir CA válido. A validade deste laudo é condicionada à integridade dos dispositivos de proteção.", style_just))
 
             elements.append(Spacer(1, 2*cm))
-            elements.append(Paragraph("________________________________________________", styles['Normal']))
-            elements.append(Paragraph(f"<b>Engenheiro Eletricista - CREA {uf_c}/{num_c}</b>", styles['Normal']))
+            elements.append(Paragraph(f"__________________________________________<br/><b>Eng. Eletricista - CREA {uf_c}/{num_c}</b>", ParagraphStyle(name='Sig', parent=styles['Normal'], alignment=TA_CENTER)))
 
-            doc.build(elements); return buffer.getvalue()
+            doc.build(elements, canvasmaker=PageNumCanvas); return buffer.getvalue()
 
-        st.download_button("📩 Baixar Relatório Profissional (PDF)", gerar_pdf_profissional(), f"Laudo_{r['Equip']}.pdf")
+        st.download_button("📩 Baixar Relatório Profissional (PDF)", gerar_pdf_profissional(), f"Laudo_{cliente}.pdf")
