@@ -15,18 +15,38 @@ from reportlab.pdfgen import canvas
 st.sidebar.write("Teste de Conexão com o Banco")
 # --- 1. CONFIGURAÇÃO E CONEXÃO ---
 
-# --- CONEXÃO (Use as chaves que você já tem no código de Energia) ---
-st.set_page_config(page_title="NBR 17227 - Relatório Técnico Profissional", layout="wide")
+# --- 1. CONEXÃO ÚNICA COM O BANCO DE DADOS ---
 URL_SUPABASE = "https://lfgqxphittdatzknwkqw.supabase.co" 
 KEY_SUPABASE = "sb_publishable_zLiarara0IVVcwQm6oR2IQ_Sb0YOWTe" 
-supabase: Client = create_client(URL_SUPABASE, KEY_SUPABASE)
 
 if "supabase" not in st.session_state:
     st.session_state.supabase = create_client(URL_SUPABASE, KEY_SUPABASE)
+
 supabase = st.session_state.supabase
 
-# --- BUSCA DADOS DO CURTO-CIRCUITO ---
-st.sidebar.header("📥 Importar Dados do Curto-Circuito")
+# --- 2. BUSCA DE DADOS E BARRA LATERAL ---
+with st.sidebar:
+    st.header("📥 Importar Dados do Curto-Circuito")
+    
+    icc_sugerida = 0.0
+    v_sugerida = 380.0
+
+    try:
+        # Busca os últimos 10 CCMs salvos
+        res = supabase.table("calculos_curto").select("*").order("created_at", desc=True).limit(10).execute()
+        lista_db = res.data
+        
+        if lista_db:
+            opcoes = {f"{c['tag_painel']} ({c['icc_ka']} kA)": c for c in lista_db}
+            selecao = st.selectbox("Selecione um CCM calculado:", ["-- Entrada Manual --"] + list(opcoes.keys()))
+            
+            if selecao != "-- Entrada Manual --":
+                icc_sugerida = float(opcoes[selecao]['icc_ka'])
+                v_sugerida = float(opcoes[selecao]['v_sec'])
+                st.success(f"✅ Dados de {selecao} carregados!")
+    except Exception as e:
+        st.error(f"Erro ao importar: {e}")
+
 
 # Inicializamos as variáveis com valores padrão (caso o usuário queira digitar manual)
 icc_sugerida = 0.0
