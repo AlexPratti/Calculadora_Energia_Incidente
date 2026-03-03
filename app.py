@@ -22,21 +22,17 @@ if "supabase" not in st.session_state:
 supabase = st.session_state.supabase
 
 # --- 2. BUSCA DE DADOS E BARRA LATERAL (INTEGRAÇÃO) ---
-# Inicializamos as variáveis globais de sugestão
 icc_sugerida = 0.0
 v_sugerida = 380.0
 
 with st.sidebar:
     st.header("📥 Importar Dados do Curto-Circuito")
     try:
-        # Busca os últimos 10 CCMs salvos pelo App 1
         res_db = supabase.table("calculos_curto").select("*").order("created_at", desc=True).limit(10).execute()
         lista_db = res_db.data
         
         if lista_db:
             opcoes = {f"{c['tag_painel']} ({c['icc_ka']} kA)": c for c in lista_db}
-            
-            # Selectbox com KEY única para evitar erro de DuplicateID
             selecao = st.selectbox(
                 "Selecione um CCM calculado:", 
                 ["-- Entrada Manual --"] + list(opcoes.keys()),
@@ -137,9 +133,9 @@ with tab2:
     st.subheader("Análise de Arco Elétrico")
     col1, col2, col3 = st.columns(3)
     
-    # --- INTEGRAÇÃO: Preenchimento Automático com Conversão para kV ---
-    v_oc = col1.number_input("Tensão Voc (kV)", 0.208, 15.0, value=v_sugerida / 1000)
-    i_bf = col2.number_input("Corrente Ibf (kA)", 0.5, 106.0, value=icc_sugerida)
+    # --- CORREÇÃO: Valor mínimo alterado para 0.0 para evitar o erro de 'BelowMinError' ---
+    v_oc = col1.number_input("Tensão Voc (kV)", 0.0, 15.0, value=v_sugerida / 1000)
+    i_bf = col2.number_input("Corrente Ibf (kA)", 0.0, 106.0, value=icc_sugerida)
     t_arc = col3.number_input("Tempo T (ms)", 10.0, 5000.0, 488.0)
 
     if st.button("Executar Estudo"):
@@ -205,7 +201,6 @@ with tab3:
                     canvas.Canvas.showPage(self)
 
             elements = []
-            # CAPA
             elements.append(Spacer(1, 6*cm))
             elements.append(Paragraph("<b>RELATÓRIO TÉCNICO DE CÁLCULO DE ENERGIA INCIDENTE</b>", ParagraphStyle(name='CT', parent=styles['Title'], fontSize=22, alignment=TA_CENTER)))
             elements.append(Spacer(1, 2*cm))
@@ -214,16 +209,15 @@ with tab3:
             elements.append(Paragraph(f"Data de Emissão: {datetime.now().strftime('%d/%m/%Y')}", ParagraphStyle(name='CD', parent=styles['Normal'], fontSize=11, alignment=TA_CENTER)))
             elements.append(PageBreak())
 
-            # CONTEÚDO TÉCNICO
             elements.append(Paragraph("<b>1. MEMORIAL DE CÁLCULO (NBR 17227:2025)</b>", style_h2))
-            texto_memorial = "A metodologia aplicada segue rigorosamente a norma <b>NBR 17227:2025</b> para painéis em espaços confinados. Este estudo fundamenta-se em modelos de interpolação polinomial para geometrias reais."
+            texto_memorial = "A metodologia aplicada segue rigorosamente a norma <b>NBR 17227:2025</b> para painéis em espaços confinados."
             elements.append(Paragraph(texto_memorial, style_just))
 
             elements.append(Paragraph("<b>2. ANÁLISE DO RESULTADO E PARÂMETROS</b>", style_h2))
             elements.append(Paragraph(f"• Corrente de Arco: <b>{r['I']:.3f} kA</b><br/>• Energia Incidente: <b>{r['E_cal']:.4f} cal/cm²</b><br/>• Fronteira de Arco (DLA): <b>{r['D']:.1f} mm</b>", style_just))
 
             elements.append(Paragraph("<b>3. RECOMENDAÇÃO E JUSTIFICATIVA</b>", style_h2))
-            elements.append(Paragraph(f"Vestimenta Obrigatória: <b>{r['V_seguranca']}</b>. Justificativa baseada no princípio ALARA e fator de segurança contra incertezas de campo.", style_just))
+            elements.append(Paragraph(f"Vestimenta Obrigatória: <b>{r['V_seguranca']}</b>.", style_just))
 
             elements.append(Paragraph("<b>4. EPIs COMPLEMENTARES</b>", style_h2))
             epi_items = ["Protetor Facial contra Arco", "Balaclava Ignífuga", "Luvas Isolantes", "Calçado de Segurança"]
