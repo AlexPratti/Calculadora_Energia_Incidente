@@ -112,8 +112,8 @@ if st.session_state['auth'] is None:
             try:
                 supabase.table("usuarios").insert({"email": ne, "senha": np_, "status": "pendente"}).execute()
                 st.success("Solicitação enviada!")
-            except:
-                st.error("Erro ao enviar solicitação.")
+            except Exception as e:
+                st.error(f"Erro ao enviar solicitação: {e}")
     st.stop()
 
 # --- 4. INTERFACE PRINCIPAL ---
