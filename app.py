@@ -86,20 +86,24 @@ if st.session_state['auth'] is None:
                 try:
                     res = supabase.table("usuarios").select("*").eq("email", u).eq("senha", p).execute()
                     if res.data:
-                        # CORREÇÃO: Acessando o primeiro item da lista retornada
                         user_found = res.data[0] 
                         
                         if user_found['status'] == 'ativo':
                             # TRATAMENTO DE DATA UTC
-                            data_str = user_found['data_aprovacao'].replace('Z', '+00:00')
-                            data_ap = datetime.fromisoformat(data_str).astimezone(timezone.utc)
-                            agora_utc = datetime.now(timezone.utc)
-                            
-                            if agora_utc > data_ap + timedelta(days=365):
-                                st.error("Seu acesso expirou (validade de 1 ano atingida).")
+                            data_str = user_found.get('data_aprovacao')
+                            if data_str:
+                                data_str = data_str.replace('Z', '+00:00')
+                                data_ap = datetime.fromisoformat(data_str).astimezone(timezone.utc)
+                                agora_utc = datetime.now(timezone.utc)
+
+                                # CORREÇÃO: validade exata de 1 ano
+                                if agora_utc > data_ap + relativedelta(years=1):
+                                    st.error("Seu acesso expirou (validade de 1 ano atingida).")
+                                else:
+                                    st.session_state['auth'] = {"role": "user", "user": u}
+                                    st.rerun()
                             else:
-                                st.session_state['auth'] = {"role": "user", "user": u}
-                                st.rerun()
+                                st.error("Data de aprovação não encontrada. Contate o administrador.")
                         else:
                             st.warning(f"Seu acesso está: {user_found['status'].upper()}. Aguarde aprovação.")
                     else:
@@ -126,6 +130,39 @@ if st.sidebar.button("Sair"):
 
 # --- 5. PAINEL DO ADMINISTRADOR ---
 if st.session_state['auth']['role'] == "admin":
+    with st.expander("⚙️ Painel de Controle de Usuários"):
+        try:
+            users_res = supabase.table("usuarios").select("*").execute()
+            users_list = users_res.data
+            if users_list:
+                for user in users_list:
+                    c1, c2, c3 = st.columns(3)
+                    st_icon = "🟢" if user['status'] == 'ativo' else "🟡"
+                    c1.write(f"{st_icon} **{user['email']}**")
+                    if user['status'] == 'pendente' and c2.button("Aprovar", key=user['email']):
+                        supabase.table("usuarios").update({
+                            "status": "ativo", 
+                            "data_aprovacao": datetime.now(timezone.utc).isoformat()
+                        }).eq("email", user['email']).execute()
+                        st.rerun()
+                    if c3.button("Excluir", key=f"del_{user['email']}"):
+                        supabase.table("usuarios").delete().eq("email", user['email']).execute()
+                        st.rerun()
+        except Exception as e:
+            st.error(f"Erro no painel: {e}")
+
+# --- 6. INTERFACE DO USUÁRIO COMUM ---
+elif st.session_state['auth']['role'] == "user":
+    st.title("📊 Calculadora de Arco Elétrico")
+    st.write("Bem-vindo ao sistema! Use o menu lateral para acessar os cálculos disponíveis.")
+
+    # Exemplo de menu lateral
+    st.sidebar.subheader("Outros Cálculos")
+    if st.sidebar.button("Corrente de Curto-Circuito"):
+        st.write("🔌 Aqui você implementa o cálculo de curto-circuito.")
+    if st.sidebar.button("Banco de Capacitores"):
+        st.write("⚡ Aqui você implementa o cálculo do banco de capacitores.")
+
     with st.expander("⚙️ Painel de Controle de Usuários"):
         try:
             users_res = supabase.table("usuarios").select("*").execute()
