@@ -14,25 +14,6 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.pdfgen import canvas
 from datetime import datetime, timedelta, timezone
 
-# ...
-if user_found['status'] == 'ativo':
-    data_str = user_found.get('data_aprovacao')
-    if data_str:
-        # Normaliza string ISO
-        data_str = data_str.replace('Z', '+00:00')
-        data_ap = datetime.fromisoformat(data_str).astimezone(timezone.utc)
-        agora_utc = datetime.now(timezone.utc)
-
-        # Expiração em 1 ano exato
-        if agora_utc > data_ap + relativedelta(years=1):
-            st.error("Seu acesso expirou (validade de 1 ano atingida).")
-        else:
-            st.session_state['auth'] = {"role": "user", "user": u}
-            st.rerun()
-    else:
-        st.error("Data de aprovação não encontrada. Contate o administrador.")
-
-
 
 # --- 1. CONFIGURAÇÃO INICIAL ---
 st.set_page_config(page_title="NBR 17227 - Relatório Técnico", layout="wide")
