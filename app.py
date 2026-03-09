@@ -3,6 +3,7 @@ import numpy as np
 import io
 import pandas as pd
 from datetime import datetime, timedelta, timezone
+from dateutil.relativedelta import relativedelta  # precisa instalar python-dateutil
 from supabase import create_client, Client
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
