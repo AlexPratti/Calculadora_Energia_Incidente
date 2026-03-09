@@ -151,6 +151,18 @@ if st.session_state['auth']['role'] == "admin":
         except Exception as e:
             st.error(f"Erro no painel: {e}")
 
+# --- 6. INTERFACE DO USUÁRIO COMUM ---
+elif st.session_state['auth']['role'] == "user":
+    st.title("📊 Calculadora de Arco Elétrico")
+    st.write("Bem-vindo ao sistema! Use o menu lateral para acessar os cálculos disponíveis.")
+
+    # Exemplo de menu lateral
+    st.sidebar.subheader("Outros Cálculos")
+    if st.sidebar.button("Corrente de Curto-Circuito"):
+        st.write("🔌 Aqui você implementa o cálculo de curto-circuito.")
+    if st.sidebar.button("Banco de Capacitores"):
+        st.write("⚡ Aqui você implementa o cálculo do banco de capacitores.")
+
 
     # --- 5. BASE DE DADOS ---
     equip_data = {
