@@ -2,7 +2,7 @@ import streamlit as st
 import numpy as np
 import io
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from supabase import create_client, Client
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -11,6 +11,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER, TA_LEFT
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether
 from reportlab.pdfgen import canvas
+from datetime import datetime, timedelta, timezone
 
 # --- 1. CONFIGURAÇÃO INICIAL ---
 st.set_page_config(page_title="NBR 17227 - Relatório Técnico", layout="wide")
