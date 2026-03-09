@@ -2,8 +2,7 @@ import streamlit as st
 import numpy as np
 import io
 import pandas as pd
-from datetime import datetime, timedelta, timezone
-from dateutil.relativedelta import relativedelta
+from datetime import datetime
 from supabase import create_client, Client
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -12,8 +11,6 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER, TA_LEFT
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether
 from reportlab.pdfgen import canvas
-from datetime import datetime, timedelta, timezone
-
 
 # --- 1. CONFIGURAÇÃO INICIAL ---
 st.set_page_config(page_title="NBR 17227 - Relatório Técnico", layout="wide")
@@ -86,24 +83,20 @@ if st.session_state['auth'] is None:
                 try:
                     res = supabase.table("usuarios").select("*").eq("email", u).eq("senha", p).execute()
                     if res.data:
+                        # CORREÇÃO: Acessando o primeiro item da lista retornada
                         user_found = res.data[0] 
                         
                         if user_found['status'] == 'ativo':
                             # TRATAMENTO DE DATA UTC
-                            data_str = user_found.get('data_aprovacao')
-                            if data_str:
-                                data_str = data_str.replace('Z', '+00:00')
-                                data_ap = datetime.fromisoformat(data_str).astimezone(timezone.utc)
-                                agora_utc = datetime.now(timezone.utc)
-
-                                # CORREÇÃO: validade exata de 1 ano
-                                if agora_utc > data_ap + relativedelta(years=1):
-                                    st.error("Seu acesso expirou (validade de 1 ano atingida).")
-                                else:
-                                    st.session_state['auth'] = {"role": "user", "user": u}
-                                    st.rerun()
+                            data_str = user_found['data_aprovacao'].replace('Z', '+00:00')
+                            data_ap = datetime.fromisoformat(data_str).astimezone(timezone.utc)
+                            agora_utc = datetime.now(timezone.utc)
+                            
+                            if agora_utc > data_ap + timedelta(days=365):
+                                st.error("Seu acesso expirou (validade de 1 ano atingida).")
                             else:
-                                st.error("Data de aprovação não encontrada. Contate o administrador.")
+                                st.session_state['auth'] = {"role": "user", "user": u}
+                                st.rerun()
                         else:
                             st.warning(f"Seu acesso está: {user_found['status'].upper()}. Aguarde aprovação.")
                     else:
@@ -150,18 +143,6 @@ if st.session_state['auth']['role'] == "admin":
                         st.rerun()
         except Exception as e:
             st.error(f"Erro no painel: {e}")
-
-# --- 6. INTERFACE DO USUÁRIO COMUM ---
-elif st.session_state['auth']['role'] == "user":
-    st.title("📊 Calculadora de Arco Elétrico")
-    st.write("Bem-vindo ao sistema! Use o menu lateral para acessar os cálculos disponíveis.")
-
-    # Exemplo de menu lateral
-    st.sidebar.subheader("Outros Cálculos")
-    if st.sidebar.button("Corrente de Curto-Circuito"):
-        st.write("🔌 Aqui você implementa o cálculo de curto-circuito.")
-    if st.sidebar.button("Banco de Capacitores"):
-        st.write("⚡ Aqui você implementa o cálculo do banco de capacitores.")
 
 
     # --- 5. BASE DE DADOS ---
