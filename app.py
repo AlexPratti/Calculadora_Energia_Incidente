@@ -29,6 +29,31 @@ from supabase import create_client, Client
 URL_SUPABASE = "https://lfgqxphittdatzknwkqw.supabase.co" 
 KEY_SUPABASE = "sb_publishable_zLiarara0IVVcwQm6oR2IQ_Sb0YOWTe" 
 
+supabase = create_client(url, key)
+
+# Função para enviar solicitação
+def enviar_solicitacao(email, senha):
+    try:
+        novo_usuario = {
+            "email": email,
+            "senha": senha,
+            "status": "pendente",  # Certifique-se de usar um status válido
+            "solicitacao_enviada": False
+        }
+        # Inserir dados na tabela 'usuarios'
+        res = supabase.table("usuarios").insert(novo_usuario).execute()
+        print("Solicitação enviada com sucesso!")
+        print(res)  # Exibe a resposta do Supabase
+    except Exception as e:
+        print("Erro ao enviar solicitação.")
+        print(f"Detalhes do erro: {e}")
+
+# Teste com os dados fornecidos
+enviar_solicitacao("dadoso@gmail.com", "123456")
+
+
+
+
 # Verifica se a conexão já foi criada na sessão
 if "supabase" not in st.session_state:
     st.session_state.supabase = create_client(URL_SUPABASE, KEY_SUPABASE)
