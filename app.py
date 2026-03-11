@@ -3,7 +3,7 @@ import numpy as np
 import io
 import pandas as pd
 from datetime import datetime
-from supabase import create_client, Client
+# from supabase import create_client, Client
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
@@ -25,10 +25,16 @@ st.set_page_config(page_title="NBR 17227 - Relatório Técnico", layout="wide")
 
 # --- Inicialização do Supabase ---
 
-URL_SUPABASE = "https://lfgqxphittdatzknwkqw.supabase.co" 
-KEY_SUPABASE = "sb_publishable_zLiarara0IVVcwQm6oR2IQ_Sb0YOWTe" 
+if "supabase" not in st.session_state:
+    from supabase import create_client, Client
 
-supabase = create_client(URL_SUPABASE, KEY_SUPABASE)
+    URL_SUPABASE = "https://lfgqxphittdatzknwkqw.supabase.co"
+    KEY_SUPABASE = "sb_publishable_zLiarara0IVVcwQm6oR2IQ_Sb0YOWTe"
+
+    st.session_state.supabase = create_client(URL_SUPABASE, KEY_SUPABASE)
+
+supabase = st.session_state.supabase
+
 
 
 # Função para enviar solicitação
@@ -41,13 +47,22 @@ def enviar_solicitacao(email, senha):
             "solicitacao_enviada": False
         }
         # Inserir dados na tabela 'usuarios'
+        print("Dados enviados para inserção:", novo_usuario)  # Log para debug
         res = supabase.table("usuarios").insert(novo_usuario).execute()
-        print("Solicitação enviada com sucesso!")
-        print(res)  # Exibe a resposta do Supabase
+        print("Resposta da inserção:", res)  # Log do Supabase
     except Exception as e:
-        print("Erro ao enviar solicitação.")
-        print(f"Detalhes do erro: {e}")
+        print("Erro ao enviar solicitação:", e)
 
+
+
+        # **********************************************************
+       # res = supabase.table("usuarios").insert(novo_usuario).execute()
+       # print("Solicitação enviada com sucesso!")
+       # print(res)  # Exibe a resposta do Supabase
+   # except Exception as e:
+       # print("Erro ao enviar solicitação.")
+       # print(f"Detalhes do erro: {e}")
+        # **********************************************************
 # Teste com os dados fornecidos
 enviar_solicitacao("dadoso@gmail.com", "123456")
 
