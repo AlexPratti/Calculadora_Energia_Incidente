@@ -85,7 +85,8 @@ with st.sidebar:
     st.title("Outros Cálculos")
     st.link_button("Corrente de Curto-Circuito", "https://short-circuit-calc-e5u5dmgap2uqfdtbkc3d4e.streamlit.app", use_container_width=True)
     st.link_button("Banco de Capacitores", "https://c-lculobancocapacitores-tne9epqsrh64gtwaakzyax.streamlit.app", use_container_width=True)
-# --- 3. SISTEMA DE LOGIN ---
+
+# --- 3. SISTEMA DE LOGIN (Corrigido) ---
 if 'auth' not in st.session_state:
     st.session_state['auth'] = None
 
@@ -104,28 +105,35 @@ if st.session_state['auth'] is None:
                 try:
                     res = supabase.table("usuarios").select("*").eq("email", u).eq("senha", p).execute()
                     if res.data and len(res.data) > 0:
-                        user_found = res.data[0]
+                        user_found = res.data[0] # Acessa o primeiro usuário da lista
+                        
                         if user_found['status'] == 'ativo':
                             data_str = user_found.get('data_aprovacao')
                             if data_str:
+                                # CORREÇÃO AQUI: Forçamos o fuso horário para evitar o erro de comparação
                                 data_ap = datetime.fromisoformat(data_str.replace('Z', '+00:00'))
-                                if datetime.now(timezone.utc) > data_ap + timedelta(days=365):
-                                    st.error("Acesso expirado.")
+                                agora_com_fuso = datetime.now(timezone.utc) 
+                                
+                                if agora_com_fuso > data_ap + timedelta(days=365):
+                                    st.error("Seu acesso expirou (validade de 1 ano atingida).")
                                     st.stop()
+                            
                             st.session_state['auth'] = {"role": "user", "user": u}
                             st.rerun()
                         else:
-                            st.warning(f"Status: {user_found['status'].upper()}. Aguarde aprovação.")
+                            st.warning(f"Seu acesso está: {user_found['status'].upper()}. Aguarde aprovação.")
                     else:
                         st.error("E-mail ou senha incorretos.")
                 except Exception as e:
                     st.error(f"Erro no login: {e}")
+    
     with t2:
         ne = st.text_input("Seu E-mail para cadastro")
         np_ = st.text_input("Crie uma Senha", type="password")
         if st.button("Enviar Solicitação"):
             enviar_solicitacao(ne, np_)
     st.stop()
+
 
 # --- 4. INTERFACE PRINCIPAL ---
 st.sidebar.write(f"Conectado: **{st.session_state['auth']['user']}**")
