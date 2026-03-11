@@ -104,26 +104,25 @@ if st.session_state['auth'] is None:
                     res = supabase.table("usuarios").select("*").eq("email", u).eq("senha", p).execute()
                     if res.data and len(res.data) > 0:
                         user_found = res.data[0] # Acessa o primeiro usuário da lista
-                        
-                        if user_found['status'] == 'ativo':
+                                                            
+                         if user_found['status'] == 'ativo':
                             data_str = user_found.get('data_aprovacao')
                             if data_str:
-                                # 1. Transforma a string do banco em objeto com fuso (Aware)
-                                data_ap = datetime.fromisoformat(data_str.replace('Z', '+00:00'))
-                                # 2. Pega o agora também com fuso (Aware)
-                                agora_utc = datetime.now(timezone.utc)
-    
-                        # 3. Agora a comparação é segura (Aware vs Aware)
-                                if agora_utc > data_ap + timedelta(days=365):
-                                    st.error("Seu acesso expirou.")
+                                # 1. Converte a string do banco para objeto datetime
+                                # Removemos qualquer caractere de fuso para garantir que seja 'naive'
+                                data_ap = datetime.fromisoformat(data_str.replace('Z', '').split('+')[0])
+                                
+                                # 2. Pega o "agora" também SEM fuso horário (Naive)
+                                agora_local = datetime.now()
+                                
+                                # 3. Agora a comparação funciona: Naive vs Naive
+                                if agora_local > data_ap + timedelta(days=365):
+                                    st.error("Seu acesso expirou (validade de 1 ano atingida).")
                                     st.stop()
-
-
-
-                            
                             
                             st.session_state['auth'] = {"role": "user", "user": u}
-                            st.rerun()
+                            st.rerun()      
+
                         else:
                             st.warning(f"Seu acesso está: {user_found['status'].upper()}. Aguarde aprovação.")
                     else:
