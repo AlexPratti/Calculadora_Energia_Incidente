@@ -20,20 +20,18 @@ except Exception as e:
     st.error(f"Erro ao conectar ao Supabase: {e}")
 
 
-# --- 1. CONFIGURAÇÃO INICIAL ---
-st.set_page_config(page_title="NBR 17227 - Relatório Técnico", layout="wide")
-
-# --- Inicialização do Supabase ---
+# Configuração inicial do Supabase
 URL_SUPABASE = "https://lfgqxphittdatzknwkqw.supabase.co"
 KEY_SUPABASE = "sb_publishable_zLiarara0IVVcwQm6oR2IQ_Sb0YOWTe"
 
-# Inicializa Supabase apenas uma vez
+# Inicializando Supabase uma única vez
 if "supabase" not in st.session_state:
     st.session_state.supabase = create_client(URL_SUPABASE, KEY_SUPABASE)
 
-supabase = st.session_state.supabase  # Certifique-se de acessar a variável global
+# Variável global para acessar Supabase
+supabase = st.session_state.supabase
 
-# Teste de conexão
+# Testando conexão
 try:
     res = supabase.table("usuarios").select("*").execute()
     st.success("Conexão com o Supabase bem-sucedida!")
