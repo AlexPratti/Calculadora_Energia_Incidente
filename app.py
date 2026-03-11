@@ -282,16 +282,60 @@ with tab2:
 with tab3:
     if 'res' in st.session_state:
         r = st.session_state['res']
-        cliente = st.text_input("Cliente:", "Empresa Exemplo")
+        
+        # --- CAMPOS DE PREENCHIMENTO DO RELATÓRIO ---
+        c1, c2, c3, c4 = st.columns(4)
+        cliente = c1.text_input("Cliente:", "Empresa Exemplo S.A.")
+        local_eq = c2.text_input("Local:", "Subestação Principal")
+        uf_c = c3.text_input("UF CREA:", "ES")
+        num_c = c4.text_input("Número CREA:", "")
+
         def gerar_pdf_profissional():
             buffer = io.BytesIO()
-            doc = SimpleDocTemplate(buffer, pagesize=A4)
+            doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2.5*cm, leftMargin=2.5*cm, topMargin=2.5*cm, bottomMargin=2.5*cm)
             styles = getSampleStyleSheet()
-            elements = [Paragraph(f"Relatório: {cliente}", styles['Title']), Paragraph(f"Equipamento: {r['Equip']}", styles['Normal']), Spacer(1, 1*cm)]
-            t = Table([["Distância (mm)", "Energia", "Vestimenta"]] + r['Sens'])
-            t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.grey), ('GRID',(0,0),(-1,-1),1,colors.black)]))
-            elements.append(t)
-            doc.build(elements); return buffer.getvalue()
-        st.download_button("📩 Baixar PDF", gerar_pdf_profissional(), f"Relatorio_{cliente}.pdf")
+            
+            # Estilos customizados
+            style_just = ParagraphStyle(name='J', parent=styles['Normal'], alignment=TA_JUSTIFY, fontSize=11, leading=16.5)
+            style_h2 = ParagraphStyle(name='H2', parent=styles['Heading2'], fontSize=13, leading=18, spaceBefore=15, spaceAfter=10)
+            style_list = ParagraphStyle(name='L', parent=styles['Normal'], fontSize=11, leading=14, leftIndent=20)
+
+            elements = []
+            # CAPA
+            elements.append(Spacer(1, 6*cm))
+            elements.append(Paragraph("<b>RELATÓRIO TÉCNICO DE CÁLCULO DE ENERGIA INCIDENTE</b>", ParagraphStyle(name='CT', parent=styles['Title'], fontSize=22, alignment=TA_CENTER)))
+            elements.append(Spacer(1, 2*cm))
+            elements.append(Paragraph(f"CLIENTE: {cliente.upper()}<br/>LOCAL: {local_eq.upper()}<br/>EQUIPAMENTO: {r['Equip'].upper()}", ParagraphStyle(name='CS', parent=styles['Normal'], fontSize=13, alignment=TA_CENTER, leading=22)))
+            elements.append(Spacer(1, 10*cm))
+            elements.append(Paragraph(f"Data de Emissão: {datetime.now().strftime('%d/%m/%Y')}", ParagraphStyle(name='CD', parent=styles['Normal'], fontSize=11, alignment=TA_CENTER)))
+            elements.append(PageBreak())
+
+            # 1. MEMORIAL
+            elements.append(Paragraph("<b>1. MEMORIAL DE CÁLCULO (NBR 17227:2025)</b>", style_h2))
+            elements.append(Paragraph("A metodologia aplicada segue rigorosamente a norma <b>NBR 17227:2025</b> para painéis em espaços confinados.", style_just))
+
+            # 2. ANÁLISE
+            elements.append(Paragraph("<b>2. ANÁLISE DO RESULTADO E PARÂMETROS</b>", style_h2))
+            elements.append(Paragraph(f"• Corrente de Arco: <b>{r['I']:.3f} kA</b><br/>• Energia Incidente: <b>{r['E_cal']:.4f} cal/cm²</b><br/>• DLA: <b>{r['D']:.1f} mm</b>", style_just))
+
+            # 3. RECOMENDAÇÃO
+            elements.append(Paragraph("<b>3. RECOMENDAÇÃO TÉCNICA</b>", style_h2))
+            elements.append(Paragraph(f"Utilização obrigatória da vestimenta <b>{r['V_seguranca']}</b>.", style_just))
+
+            # 5. TABELA FINAL
+            elements.append(Paragraph("<b>5. TABELA DE DISTÂNCIA X ENERGIA</b>", style_h2))
+            t_sens = Table([["Distância (mm)", "Energia (cal/cm²)", "Vestimenta"]] + r['Sens'], colWidths=[5*cm]*3)
+            t_sens.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.lightgrey), ('GRID',(0,0),(-1,-1),0.5,colors.grey)]))
+            elements.append(t_sens)
+
+            # ASSINATURA
+            elements.append(Spacer(1, 2*cm))
+            elements.append(Paragraph(f"________________________________<br/><b>Engenheiro Eletricista - CREA {uf_c}/{num_c}</b>", ParagraphStyle(name='Sig', parent=styles['Normal'], alignment=TA_CENTER)))
+
+            doc.build(elements)
+            return buffer.getvalue()
+
+        # Botão de download
+        st.download_button("📩 Baixar Relatório Profissional (PDF)", gerar_pdf_profissional(), f"Relatorio_Arco_{cliente}.pdf")
     else:
-        st.info("💡 Realize o cálculo primeiro.")
+        st.info("💡 Por favor, realize o cálculo na aba 'Cálculos e Resultados' primeiro.")
