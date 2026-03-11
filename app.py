@@ -2,8 +2,7 @@ import streamlit as st
 import numpy as np
 import io
 import pandas as pd
-from datetime import datetime, timedelta, timezone
-from dateutil.relativedelta import relativedelta  # precisa instalar python-dateutil
+from datetime import datetime
 from supabase import create_client, Client
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -112,8 +111,8 @@ if st.session_state['auth'] is None:
             try:
                 supabase.table("usuarios").insert({"email": ne, "senha": np_, "status": "pendente"}).execute()
                 st.success("Solicitação enviada!")
-            except Exception as e:
-                st.error(f"Erro ao enviar solicitação: {e}")
+            except:
+                st.error("Erro ao enviar solicitação.")
     st.stop()
 
 # --- 4. INTERFACE PRINCIPAL ---
