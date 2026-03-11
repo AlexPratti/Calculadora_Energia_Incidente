@@ -42,6 +42,13 @@ except Exception as e:
 # Função para enviar solicitação
 def enviar_solicitacao(email, senha):
     try:
+        # Verificar se o e-mail já existe
+        existente = supabase.table("usuarios").select("email").eq("email", email).execute()
+        if existente.data:
+            st.error("E-mail já cadastrado!")
+            return
+
+        # Criar novo usuário
         novo_usuario = {
             "email": email,
             "senha": senha,
@@ -52,6 +59,7 @@ def enviar_solicitacao(email, senha):
         st.success("Solicitação enviada com sucesso!")
     except Exception as e:
         st.error(f"Erro ao enviar solicitação: {e}")
+
 
 # Teste de conexão
 try:
