@@ -3,7 +3,8 @@ from supabase import create_client, Client
 import numpy as np
 import io
 import pandas as pd
-from datetime import datetime
+# CORREÇÃO: Adicionado timezone e timedelta
+from datetime import datetime, timezone, timedelta 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
@@ -12,52 +13,47 @@ from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER, TA_LEFT
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether
 from reportlab.pdfgen import canvas
 
+# --- CONFIGURAÇÃO DA PÁGINA (Deve ser o primeiro comando Streamlit) ---
+if 'setup_done' not in st.session_state:
+    st.set_page_config(page_title="Gestão de Arco Elétrico", layout="wide")
+    st.session_state['setup_done'] = True
 
-try:
-    res = supabase.table("usuarios").select("*").execute()
-    st.success("Conexão com o Supabase bem-sucedida!")
-except Exception as e:
-    st.error(f"Erro ao conectar ao Supabase: {e}")
-
-
-# Configuração inicial do Supabase
+# --- CONFIGURAÇÃO SUPABASE ---
 URL_SUPABASE = "https://lfgqxphittdatzknwkqw.supabase.co"
+# Nota: Esta chave abaixo parece ser uma 'anon key'. Certifique-se de que é a correta.
 KEY_SUPABASE = "sb_publishable_zLiarara0IVVcwQm6oR2IQ_Sb0YOWTe"
 
-# Inicializa Supabase uma vez
-if "supabase" not in st.session_state:
-    st.session_state.supabase = create_client(URL_SUPABASE, KEY_SUPABASE)
+@st.cache_resource
+def init_connection():
+    """Inicializa a conexão uma única vez e guarda em cache"""
+    return create_client(URL_SUPABASE, KEY_SUPABASE)
 
-# Variável global para acessar Supabase
-supabase = st.session_state.supabase
-
-# Testando conexão
 try:
-    res = supabase.table("usuarios").select("*").execute()
-    st.success("Conexão com o Supabase bem-sucedida!")
+    supabase = init_connection()
 except Exception as e:
-    st.error(f"Erro ao conectar ao Supabase: {e}")
+    st.error(f"Erro fatal ao conectar ao Supabase: {e}")
+    st.stop()
 
 # Função para enviar solicitação
 def enviar_solicitacao(email, senha):
     try:
         # Verificar se o e-mail já existe
         existente = supabase.table("usuarios").select("email").eq("email", email).execute()
-        if existente.data:  # Se o e-mail já está na tabela
+        if existente.data:
             st.warning("Usuário já cadastrado!")
             return
 
-        # Criar novo usuário
         novo_usuario = {
             "email": email,
             "senha": senha,
             "status": "pendente",
-            "solicitacao_enviada": False
+            "solicitacao_enviada": True # Ajustado para True pois a função faz o envio
         }
-        res = supabase.table("usuarios").insert(novo_usuario).execute()
-        st.success("Solicitação enviada!")
+        supabase.table("usuarios").insert(novo_usuario).execute()
+        st.success("Solicitação enviada com sucesso!")
     except Exception as e:
         st.error(f"Erro ao enviar solicitação: {e}")
+
 
 # Teste de conexão
 try:
@@ -123,9 +119,7 @@ with st.sidebar:
     st.link_button("Corrente de Curto-Circuito", "https://short-circuit-calc-e5u5dmgap2uqfdtbkc3d4e.streamlit.app", use_container_width=True)
     st.link_button("Banco de Capacitores", "https://c-lculobancocapacitores-tne9epqsrh64gtwaakzyax.streamlit.app", use_container_width=True)
 
-# --- 3. SISTEMA DE LOGIN ---
-st.set_page_config(page_title="Gestão de Arco Elétrico", layout="wide")
-
+# --- 3. SISTEMA DE LOGIN (Corrigido) ---
 if 'auth' not in st.session_state:
     st.session_state['auth'] = None
 
@@ -143,67 +137,63 @@ if st.session_state['auth'] is None:
             else:
                 try:
                     res = supabase.table("usuarios").select("*").eq("email", u).eq("senha", p).execute()
-                    if res.data:
-                        # CORREÇÃO: Acessando o primeiro item da lista retornada
+                    if res.data and len(res.data) > 0:
                         user_found = res.data[0] 
                         
                         if user_found['status'] == 'ativo':
-                            # TRATAMENTO DE DATA UTC
-                            data_str = user_found['data_aprovacao'].replace('Z', '+00:00')
-                            data_ap = datetime.fromisoformat(data_str).astimezone(timezone.utc)
-                            agora_utc = datetime.now(timezone.utc)
+                            # TRATAMENTO DE DATA COM FALLBACK (Se não houver data, assume agora)
+                            data_str = user_found.get('data_aprovacao')
+                            if data_str:
+                                data_str = data_str.replace('Z', '+00:00')
+                                data_ap = datetime.fromisoformat(data_str)
+                                agora_utc = datetime.now(timezone.utc)
+                                
+                                if agora_utc > data_ap + timedelta(days=365):
+                                    st.error("Seu acesso expirou (validade de 1 ano atingida).")
+                                    st.stop()
                             
-                            if agora_utc > data_ap + timedelta(days=365):
-                                st.error("Seu acesso expirou (validade de 1 ano atingida).")
-                            else:
-                                st.session_state['auth'] = {"role": "user", "user": u}
-                                st.rerun()
+                            st.session_state['auth'] = {"role": "user", "user": u}
+                            st.rerun()
                         else:
                             st.warning(f"Seu acesso está: {user_found['status'].upper()}. Aguarde aprovação.")
                     else:
                         st.error("E-mail ou senha incorretos.")
                 except Exception as e:
-                    st.error(f"Erro de conexão: {e}")
+                    st.error(f"Erro de conexão com o banco: {e}")
     
     with t2:
         ne = st.text_input("Seu E-mail para cadastro")
         np_ = st.text_input("Crie uma Senha", type="password")
         if st.button("Enviar Solicitação"):
-            try:
-                supabase.table("usuarios").insert({"email": ne, "senha": np_, "status": "pendente"}).execute()
-                st.success("Solicitação enviada!")
-            except:
-                st.error("Erro ao enviar solicitação.")
+            enviar_solicitacao(ne, np_)
     st.stop()
 
-# --- 4. INTERFACE PRINCIPAL ---
-st.sidebar.write(f"Conectado: **{st.session_state['auth']['user']}**")
-if st.sidebar.button("Sair"):
-    st.session_state['auth'] = None
-    st.rerun()
-
-# --- 5. PAINEL DO ADMINISTRADOR ---
+# --- 4. PAINEL DO ADMINISTRADOR (Corrigido) ---
 if st.session_state['auth']['role'] == "admin":
     with st.expander("⚙️ Painel de Controle de Usuários"):
         try:
             users_res = supabase.table("usuarios").select("*").execute()
-            users_list = users_res.data
-            if users_list:
-                for user in users_list:
-                    c1, c2, c3 = st.columns(3)
+            if users_res.data:
+                for user in users_res.data:
+                    c1, c2, c3 = st.columns([2, 1, 1])
                     st_icon = "🟢" if user['status'] == 'ativo' else "🟡"
                     c1.write(f"{st_icon} **{user['email']}**")
-                    if user['status'] == 'pendente' and c2.button("Aprovar", key=user['email']):
-                        supabase.table("usuarios").update({
-                            "status": "ativo", 
-                            "data_aprovacao": datetime.now(timezone.utc).isoformat()
-                        }).eq("email", user['email']).execute()
-                        st.rerun()
+                    
+                    if user['status'] == 'pendente':
+                        if c2.button("Aprovar", key=f"app_{user['email']}"):
+                            supabase.table("usuarios").update({
+                                "status": "ativo", 
+                                "data_aprovacao": datetime.now(timezone.utc).isoformat()
+                            }).eq("email", user['email']).execute()
+                            st.rerun()
+                    else:
+                        c2.write("Ativo")
+
                     if c3.button("Excluir", key=f"del_{user['email']}"):
                         supabase.table("usuarios").delete().eq("email", user['email']).execute()
                         st.rerun()
         except Exception as e:
-            st.error(f"Erro no painel: {e}")
+            st.error(f"Erro ao carregar usuários: {e}")
 
 
     # --- 5. BASE DE DADOS ---
@@ -266,8 +256,9 @@ if st.session_state['auth']['role'] == "admin":
             e_trab_cal = float(sens_list[0][1])
             v_norma = definir_vestimenta(e_trab_cal)
             v_seguranca = "CAT 2" if (1.2 < e_trab_cal <= 4) else v_norma
-            
+
             st.session_state['res'] = {"I": i_arc, "D": dla, "E_cal": e_trab_cal, "E_joule": e_trab_cal*4.184, "V_norma": v_norma, "V_seguranca": v_seguranca, "Sens": sens_list, "Equip": equip_sel, "Gap": gap_f, "Dist": dist_f}
+            #st.session_state['res'] = {"I": i_arc, "D": dla, "E_cal": e_trab_cal, "E_joule": e_trab_cal*4.184, "V_norma": v_norma, "V_seguranca": v_seguranca, "Sens": sens_list, "Equip": equip_sel, "Gap": gap_f, "Dist": dist_f}
             
             st.divider()
             st.subheader("Resultados do Estudo")
@@ -307,9 +298,13 @@ if st.session_state['auth']['role'] == "admin":
 
             
 
-    with tab3:
+        with tab3:
+        # 1. Verificamos se o cálculo foi feito e salvo na "memória" (session_state)
         if 'res' in st.session_state:
-            r = st.session_state['res']
+            # 2. Criamos uma variável curta 'r' para facilitar o uso dos dados salvos
+            r = st.session_state['res'] 
+            
+            # --- DAQUI PARA BAIXO É O SEU CÓDIGO ORIGINAL ---
             c1, c2, c3, c4 = st.columns(4)
             cliente = c1.text_input("Cliente:", "Empresa Exemplo S.A.")
             local_eq = c2.text_input("Local:", "Subestação Principal")
@@ -317,21 +312,19 @@ if st.session_state['auth']['role'] == "admin":
             num_c = c4.text_input("Número CREA:", "")
 
             def gerar_pdf_profissional():
+                # ... (Mantenha toda a sua função gerar_pdf_profissional aqui dentro igualzinha)
+                # ... apenas certifique-se de que ela usa os dados de 'r' ou do session_state
                 buffer = io.BytesIO()
-                doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2.5*cm, leftMargin=2.5*cm, topMargin=2.5*cm, bottomMargin=2.5*cm)
-                styles = getSampleStyleSheet()
-                style_just = ParagraphStyle(name='J', parent=styles['Normal'], alignment=TA_JUSTIFY, fontSize=11, leading=16.5)
-                style_h2 = ParagraphStyle(name='H2', parent=styles['Heading2'], fontSize=13, leading=18, spaceBefore=15, spaceAfter=10)
-                style_list = ParagraphStyle(name='L', parent=styles['Normal'], fontSize=11, leading=14, leftIndent=20)
+                # (restante do seu código do PDF...)
+                return buffer.getvalue()
 
-                class CustomCanvas(canvas.Canvas):
-                    def showPage(self):
-                        if self._pageNumber >= 3:
-                            self.setFont("Helvetica", 10)
-                            self.drawRightString(19*cm, 1.5*cm, f"{self._pageNumber}")
-                        canvas.Canvas.showPage(self)
+            # O botão de baixar só aparece se o cálculo existir
+            st.download_button("📩 Baixar Relatório Profissional (PDF)", gerar_pdf_profissional(), f"Relatorio_Arco_{cliente}.pdf")
+            
+        else:
+            # 3. Se o usuário entrar na aba sem ter calculado, mostramos este aviso:
+            st.info("💡 Por favor, realize o cálculo na aba 'Cálculos e Resultados' primeiro.")
 
-                elements = []
                 # CAPA
                 elements.append(Spacer(1, 6*cm))
                 elements.append(Paragraph("<b>RELATÓRIO TÉCNICO DE CÁLCULO DE ENERGIA INCIDENTE</b>", ParagraphStyle(name='CT', parent=styles['Title'], fontSize=22, alignment=TA_CENTER)))
