@@ -13,11 +13,11 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.pdfgen import canvas
 
 
-#try:
-    #res = supabase.table("usuarios").select("*").execute()
-    #st.success("Conexão com o Supabase bem-sucedida!")
-#except Exception as e:
-    #st.error(f"Erro ao conectar ao Supabase: {e}")
+try:
+    res = supabase.table("usuarios").select("*").execute()
+    st.success("Conexão com o Supabase bem-sucedida!")
+except Exception as e:
+    st.error(f"Erro ao conectar ao Supabase: {e}")
 
 
 # --- 1. CONFIGURAÇÃO INICIAL ---
