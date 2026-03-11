@@ -12,24 +12,22 @@ from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER, TA_LEFT
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether
 from reportlab.pdfgen import canvas
 
-# --- CONFIGURAÇÃO DA PÁGINA (Deve ser o primeiro comando) ---
-if 'setup_done' not in st.session_state:
-    #st.set_page_config(page_title="Gestão de Arco Elétrico", layout="wide")
-    st.session_state['setup_done'] = True
+# 1. Configuração da página deve vir ANTES de qualquer outro comando Streamlit
+st.set_page_config(page_title="Gestão de Arco Elétrico", layout="wide")
 
-# --- CONFIGURAÇÃO SUPABASE ---
+# 2. Configuração Supabase
 URL_SUPABASE = "https://lfgqxphittdatzknwkqw.supabase.co"
 KEY_SUPABASE = "sb_publishable_zLiarara0IVVcwQm6oR2IQ_Sb0YOWTe"
 
-@st.cache_resource
-def init_connection():
-    return create_client(URL_SUPABASE, KEY_SUPABASE)
-
+# Inicialização direta (sem cache por enquanto para testar)
 try:
-    supabase = init_connection()
+    if "supabase" not in st.session_state:
+        st.session_state.supabase = create_client(URL_SUPABASE, KEY_SUPABASE)
+    supabase = st.session_state.supabase
 except Exception as e:
-    st.error(f"Erro fatal ao conectar ao Supabase: {e}")
+    st.error(f"Erro de conexão: {e}")
     st.stop()
+
 
 # --- FUNÇÕES DE APOIO ---
 def enviar_solicitacao(email, senha):
