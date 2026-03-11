@@ -84,7 +84,7 @@ with st.sidebar:
     st.link_button("Corrente de Curto-Circuito", "https://short-circuit-calc-e5u5dmgap2uqfdtbkc3d4e.streamlit.app", use_container_width=True)
     st.link_button("Banco de Capacitores", "https://c-lculobancocapacitores-tne9epqsrh64gtwaakzyax.streamlit.app", use_container_width=True)
 
-# --- 3. SISTEMA DE LOGIN (Corrigido) ---
+# --- 3. SISTEMA DE LOGIN (Corrigido e Alinhado) ---
 if 'auth' not in st.session_state:
     st.session_state['auth'] = None
 
@@ -103,26 +103,23 @@ if st.session_state['auth'] is None:
                 try:
                     res = supabase.table("usuarios").select("*").eq("email", u).eq("senha", p).execute()
                     if res.data and len(res.data) > 0:
-                        user_found = res.data[0] # Acessa o primeiro usuário da lista
-                                                            
-                         if user_found['status'] == 'ativo':
+                        user_found = res.data[0] # Pega o primeiro usuário da lista
+                        
+                        if user_found['status'] == 'ativo':
                             data_str = user_found.get('data_aprovacao')
                             if data_str:
-                                # 1. Converte a string do banco para objeto datetime
-                                # Removemos qualquer caractere de fuso para garantir que seja 'naive'
-                                data_ap = datetime.fromisoformat(data_str.replace('Z', '').split('+')[0])
+                                # Converte a data do banco (que está sem fuso na sua foto)
+                                # Limpamos qualquer caractere de fuso para comparar 'naive' com 'naive'
+                                d_limpa = data_str.replace('Z', '').split('+')[0]
+                                data_ap = datetime.fromisoformat(d_limpa)
                                 
-                                # 2. Pega o "agora" também SEM fuso horário (Naive)
-                                agora_local = datetime.now()
-                                
-                                # 3. Agora a comparação funciona: Naive vs Naive
-                                if agora_local > data_ap + timedelta(days=365):
+                                # Compara com o "agora" local do servidor
+                                if datetime.now() > data_ap + timedelta(days=365):
                                     st.error("Seu acesso expirou (validade de 1 ano atingida).")
                                     st.stop()
                             
                             st.session_state['auth'] = {"role": "user", "user": u}
-                            st.rerun()      
-
+                            st.rerun()
                         else:
                             st.warning(f"Seu acesso está: {user_found['status'].upper()}. Aguarde aprovação.")
                     else:
@@ -136,6 +133,7 @@ if st.session_state['auth'] is None:
         if st.button("Enviar Solicitação"):
             enviar_solicitacao(ne, np_)
     st.stop()
+
 
 
 # --- 4. INTERFACE PRINCIPAL ---
