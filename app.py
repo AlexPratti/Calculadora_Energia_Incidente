@@ -144,11 +144,14 @@ if st.session_state['auth'] is None:
                     st.error(f"Erro no login: {e}")
     
     with t2:
-        ne = st.text_input("Seu E-mail para cadastro")
-        np_ = st.text_input("Crie uma Senha", type="password")
+        ne = st.text_input("Seu E-mail para cadastro", key="reg_email")
+        np_ = st.text_input("Crie uma Senha", type="password", key="reg_pass")
+        # Novo campo do Item 2:
+        np_conf = st.text_input("Confirme sua Senha", type="password", key="reg_pass_conf")
+        
         if st.button("Enviar Solicitação"):
-            enviar_solicitacao(ne, np_)
-    st.stop()
+            # Agora enviamos os 3 campos para a função validar
+            enviar_solicitacao(ne, np_, np_conf)
 
 
 
