@@ -158,9 +158,7 @@ if st.session_state['auth'] is None:
 
 
 
-# --- 4. INTERFACE PRINCIPAL E PAINEL ADMIN (Protegido) ---
-
-# 1. Verificamos se existe alguém logado antes de qualquer outra coisa
+# --- 4. INTERFACE PRINCIPAL E PAINEL ADMIN (Com Filtros e Suspensão) ---
 if st.session_state.get('auth'):
     
     # Exibe informações na barra lateral apenas para logados
@@ -170,30 +168,62 @@ if st.session_state.get('auth'):
         if 'res' in st.session_state: del st.session_state['res']
         st.rerun()
 
-    # 2. Só tenta acessar o ['role'] se o usuário estiver logado
+    # 2. Painel do Administrador
     if st.session_state['auth']['role'] == "admin":
         with st.expander("⚙️ Painel de Controle de Usuários"):
             try:
                 users_res = supabase.table("usuarios").select("*").execute()
                 if users_res.data:
+                    # SISTEMA DE FILTRO (Adicionado)
+                    filtro = st.radio("Filtrar por Status:", ["Todos", "Pendente", "Ativo", "Suspenso"], horizontal=True)
+                    
                     for user in users_res.data:
-                        c1, c2, c3 = st.columns([2, 1, 1])
+                        status_atual = user.get('status', 'pendente')
                         email_u = user.get('email', '---')
-                        c1.write(f"{'🟢' if user['status']=='ativo' else '🟡'} {email_u}")
                         
-                        if user['status'] == 'pendente' and c2.button("Aprovar", key=f"ap_{email_u}"):
-                            supabase.table("usuarios").update({"status": "ativo", "data_aprovacao": datetime.now().isoformat()}).eq("email", email_u).execute()
-                            st.rerun()
+                        # Aplica o filtro na visualização
+                        if filtro != "Todos" and filtro.lower() != status_atual.lower():
+                            continue
                         
-                        if c3.button("Excluir", key=f"ex_{email_u}"):
+                        # Layout de Colunas: E-mail | Info | Ação | Excluir
+                        c1, c2, c3, c4 = st.columns([2, 1, 1, 0.5])
+                        
+                        # Ícone de status
+                        icon = "🟢" if status_atual == "ativo" else "🟡" if status_atual == "pendente" else "🔴"
+                        c1.write(f"{icon} **{email_u}**")
+                        
+                        # Coluna de Info/Expiração
+                        if status_atual == "ativo" and user.get('data_aprovacao'):
+                            d_ap = datetime.fromisoformat(user['data_aprovacao'].replace('Z', '').split('+')[0])
+                            dias_restantes = 365 - (datetime.now() - d_ap).days
+                            c2.write(f"⏳ {dias_restantes} dias")
+                        else:
+                            c2.write(f"_{status_atual.upper()}_")
+
+                        # Botão de Aprovação/Reativação
+                        if status_atual in ["pendente", "suspenso"]:
+                            if c3.button("✅ Aprovar", key=f"ap_{email_u}"):
+                                supabase.table("usuarios").update({
+                                    "status": "ativo", 
+                                    "data_aprovacao": datetime.now().isoformat()
+                                }).eq("email", email_u).execute()
+                                st.rerun()
+                        else:
+                            c3.write("---")
+
+                        # Botão de Exclusão
+                        if c4.button("🗑️", key=f"ex_{email_u}"):
                             supabase.table("usuarios").delete().eq("email", email_u).execute()
                             st.rerun()
-            except:
-                st.error("Erro ao carregar painel.")
+                        st.divider()
+            except Exception as e:
+                st.error(f"Erro ao carregar painel: {e}")
 
 else:
-    # Se não houver ninguém logado, o script para aqui (o login já foi exibido acima)
+    # Se não houver ninguém logado, o script para e não executa os cálculos
     st.stop()
+
+
 # --- 5. BASE DE DADOS E ABAS ---
 equip_data = {
     "CCM 15 kV": {"gap": 152.0, "dist": 914.4, "dims": {"914,4 x 914,4 x 914,4": [914.4, 914.4, 914.4, ""]}},
