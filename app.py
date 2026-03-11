@@ -32,18 +32,24 @@ except Exception as e:
 # --- FUNÇÕES DE APOIO ---
 def enviar_solicitacao(email, senha):
     try:
-        # ... seu código de verificação existente ...
+        # 1. Verificar se o e-mail já existe
+        existente = supabase.table("usuarios").select("email").eq("email", email).execute()
+        if existente.data:
+            st.warning("Este e-mail já solicitou acesso ou já está cadastrado!")
+            return
+
+        # 2. Criar novo usuário (Removida a coluna data_solicitacao que dava erro)
         novo_usuario = {
             "email": email,
             "senha": senha,
-            "status": "pendente",
-            # CORREÇÃO: Garante fuso horário no cadastro
-            "data_solicitacao": datetime.now(timezone.utc).isoformat() 
+            "status": "pendente"
         }
+        
         supabase.table("usuarios").insert(novo_usuario).execute()
-        st.success("Solicitação enviada com sucesso!")
+        st.success("Solicitação enviada com sucesso! Aguarde a aprovação do administrador.")
     except Exception as e:
         st.error(f"Erro ao enviar solicitação: {e}")
+
 
 # --- FUNÇÕES TÉCNICAS (NBR 17227:2025) ---
 def calc_ia_step(ibf, g, k):
