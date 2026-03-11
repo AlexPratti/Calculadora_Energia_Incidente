@@ -121,18 +121,21 @@ if st.session_state['auth'] is None:
                     if res.data and len(res.data) > 0:
                         user_found = res.data[0] # Pega o primeiro usuário da lista
                         
-                        if user_found['status'] == 'ativo':
+                        if user_found['status'] == 'ativo':                       
+                                #***********************************************
                             data_str = user_found.get('data_aprovacao')
                             if data_str:
-                                # Converte a data do banco (que está sem fuso na sua foto)
-                                # Limpamos qualquer caractere de fuso para comparar 'naive' com 'naive'
-                                d_limpa = data_str.replace('Z', '').split('+')[0]
-                                data_ap = datetime.fromisoformat(d_limpa)
-                                
-                                # Compara com o "agora" local do servidor
+                                data_ap = datetime.fromisoformat(data_str.replace('Z', '').split('+')[0])
+                                # Se passou de 365 dias, suspendemos no banco e avisamos
                                 if datetime.now() > data_ap + timedelta(days=365):
-                                    st.error("Seu acesso expirou (validade de 1 ano atingida).")
+                                    supabase.table("usuarios").update({"status": "suspenso"}).eq("email", u).execute()
+                                    st.error("🚫 Seu acesso expirou (validade de 1 ano). Entre em contato com o administrador.")
                                     st.stop()
+                                # Se o status já for suspenso, barra o login direto
+                            if user_found['status'] == 'suspenso':
+                                st.error("⚠️ Seu acesso está SUSPENSO. Entre em contato com o administrador para renovação.")
+                                st.stop()
+                               #********************************************
                             
                             st.session_state['auth'] = {"role": "user", "user": u}
                             st.rerun()
