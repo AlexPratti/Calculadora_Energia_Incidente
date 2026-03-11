@@ -24,7 +24,6 @@ except Exception as e:
 st.set_page_config(page_title="NBR 17227 - Relatório Técnico", layout="wide")
 
 # --- Inicialização do Supabase ---
-from supabase import create_client, Client
 
 URL_SUPABASE = "https://lfgqxphittdatzknwkqw.supabase.co" 
 KEY_SUPABASE = "sb_publishable_zLiarara0IVVcwQm6oR2IQ_Sb0YOWTe" 
