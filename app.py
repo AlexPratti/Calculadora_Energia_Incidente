@@ -24,7 +24,7 @@ except Exception as e:
 URL_SUPABASE = "https://lfgqxphittdatzknwkqw.supabase.co"
 KEY_SUPABASE = "sb_publishable_zLiarara0IVVcwQm6oR2IQ_Sb0YOWTe"
 
-# Inicializando Supabase uma única vez
+# Inicializa Supabase uma vez
 if "supabase" not in st.session_state:
     st.session_state.supabase = create_client(URL_SUPABASE, KEY_SUPABASE)
 
@@ -38,14 +38,13 @@ try:
 except Exception as e:
     st.error(f"Erro ao conectar ao Supabase: {e}")
 
-
 # Função para enviar solicitação
 def enviar_solicitacao(email, senha):
     try:
         # Verificar se o e-mail já existe
         existente = supabase.table("usuarios").select("email").eq("email", email).execute()
-        if existente.data:
-            st.error("E-mail já cadastrado!")
+        if existente.data:  # Se o e-mail já está na tabela
+            st.warning("Usuário já cadastrado!")
             return
 
         # Criar novo usuário
@@ -56,10 +55,9 @@ def enviar_solicitacao(email, senha):
             "solicitacao_enviada": False
         }
         res = supabase.table("usuarios").insert(novo_usuario).execute()
-        st.success("Solicitação enviada com sucesso!")
+        st.success("Solicitação enviada!")
     except Exception as e:
         st.error(f"Erro ao enviar solicitação: {e}")
-
 
 # Teste de conexão
 try:
