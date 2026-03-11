@@ -30,25 +30,35 @@ except Exception as e:
 
 
 # --- FUNÇÕES DE APOIO ---
-def enviar_solicitacao(email, senha):
+# Modificando para receber a confirmação de senha
+def enviar_solicitacao(email, senha, senha_confirma):
     try:
-        # 1. Verificar se o e-mail já existe
+        # Validação do Item 1: Formato de E-mail
+        if "@" not in email or "." not in email:
+            st.error("Por favor, insira um e-mail válido (exemplo@dominio.com).")
+            return
+
+        # Validação do Item 2: Coincidência de Senhas
+        if senha != senha_confirma:
+            st.error("As senhas não coincidem. Verifique e tente novamente.")
+            return
+        
+        if len(senha) < 6:
+            st.warning("Para sua segurança, use uma senha com pelo menos 6 caracteres.")
+            return
+
+        # Verificar se o e-mail já existe
         existente = supabase.table("usuarios").select("email").eq("email", email).execute()
         if existente.data:
             st.warning("Este e-mail já solicitou acesso ou já está cadastrado!")
             return
 
-        # 2. Criar novo usuário (Removida a coluna data_solicitacao que dava erro)
-        novo_usuario = {
-            "email": email,
-            "senha": senha,
-            "status": "pendente"
-        }
-        
+        novo_usuario = {"email": email, "senha": senha, "status": "pendente"}
         supabase.table("usuarios").insert(novo_usuario).execute()
-        st.success("Solicitação enviada com sucesso! Aguarde a aprovação do administrador.")
+        st.success("✅ Solicitação enviada! Aguarde a aprovação do administrador.")
     except Exception as e:
         st.error(f"Erro ao enviar solicitação: {e}")
+
 
 
 # --- FUNÇÕES TÉCNICAS (NBR 17227:2025) ---
