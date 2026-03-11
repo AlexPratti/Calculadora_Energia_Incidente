@@ -100,7 +100,7 @@ with st.sidebar:
     st.link_button("Corrente de Curto-Circuito", "https://short-circuit-calc-e5u5dmgap2uqfdtbkc3d4e.streamlit.app", use_container_width=True)
     st.link_button("Banco de Capacitores", "https://c-lculobancocapacitores-tne9epqsrh64gtwaakzyax.streamlit.app", use_container_width=True)
 
-# --- 3. SISTEMA DE LOGIN (Corrigido e Alinhado) ---
+# --- 3. SISTEMA DE LOGIN (Versão Final com Auto-Suspensão) ---
 if 'auth' not in st.session_state:
     st.session_state['auth'] = None
 
@@ -119,28 +119,35 @@ if st.session_state['auth'] is None:
                 try:
                     res = supabase.table("usuarios").select("*").eq("email", u).eq("senha", p).execute()
                     if res.data and len(res.data) > 0:
-                        user_found = res.data[0] # Pega o primeiro usuário da lista
+                        user_found = res.data[0] # Pega o primeiro registro encontrado
                         
-                        if user_found['status'] == 'ativo':                       
-                                #***********************************************
+                        # 1. TRATAMENTO PARA USUÁRIOS ATIVOS
+                        if user_found['status'] == 'ativo':
                             data_str = user_found.get('data_aprovacao')
                             if data_str:
-                                data_ap = datetime.fromisoformat(data_str.replace('Z', '').split('+')[0])
-                                # Se passou de 365 dias, suspendemos no banco e avisamos
+                                # Limpa a string de data para comparação 'naive' (sem fuso)
+                                d_limpa = data_str.replace('Z', '').split('+')[0]
+                                data_ap = datetime.fromisoformat(d_limpa)
+                                
+                                # VERIFICAÇÃO DE 1 ANO (365 DIAS)
                                 if datetime.now() > data_ap + timedelta(days=365):
+                                    # Se venceu, atualiza automaticamente no banco para 'suspenso'
                                     supabase.table("usuarios").update({"status": "suspenso"}).eq("email", u).execute()
-                                    st.error("🚫 Seu acesso expirou (validade de 1 ano). Entre em contato com o administrador.")
+                                    st.error("🚫 Seu acesso expirou (validade de 1 ano atingida). Entre em contato com o administrador.")
                                     st.stop()
-                                # Se o status já for suspenso, barra o login direto
-                            if user_found['status'] == 'suspenso':
-                                st.error("⚠️ Seu acesso está SUSPENSO. Entre em contato com o administrador para renovação.")
-                                st.stop()
-                               #********************************************
                             
+                            # Se passou pela data ou não tinha data, loga normalmente
                             st.session_state['auth'] = {"role": "user", "user": u}
                             st.rerun()
+
+                        # 2. TRATAMENTO PARA USUÁRIOS SUSPENSOS
+                        elif user_found['status'] == 'suspenso':
+                            st.error("⚠️ Seu acesso está SUSPENSO por tempo de uso. Contate o administrador para reativação.")
+                            st.stop()
+
+                        # 3. TRATAMENTO PARA USUÁRIOS PENDENTES
                         else:
-                            st.warning(f"Seu acesso está: {user_found['status'].upper()}. Aguarde aprovação.")
+                            st.warning(f"Seu acesso está: {user_found['status'].upper()}. Aguarde a aprovação do administrador.")
                     else:
                         st.error("E-mail ou senha incorretos.")
                 except Exception as e:
@@ -149,12 +156,12 @@ if st.session_state['auth'] is None:
     with t2:
         ne = st.text_input("Seu E-mail para cadastro", key="reg_email")
         np_ = st.text_input("Crie uma Senha", type="password", key="reg_pass")
-        # Novo campo do Item 2:
         np_conf = st.text_input("Confirme sua Senha", type="password", key="reg_pass_conf")
         
         if st.button("Enviar Solicitação"):
-            # Agora enviamos os 3 campos para a função validar
             enviar_solicitacao(ne, np_, np_conf)
+    st.stop()
+
 
 
 
