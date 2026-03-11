@@ -32,15 +32,13 @@ except Exception as e:
 # --- FUNÇÕES DE APOIO ---
 def enviar_solicitacao(email, senha):
     try:
-        existente = supabase.table("usuarios").select("email").eq("email", email).execute()
-        if existente.data:
-            st.warning("Usuário já cadastrado!")
-            return
+        # ... seu código de verificação existente ...
         novo_usuario = {
             "email": email,
             "senha": senha,
             "status": "pendente",
-            "data_solicitacao": datetime.now(timezone.utc).isoformat()
+            # CORREÇÃO: Garante fuso horário no cadastro
+            "data_solicitacao": datetime.now(timezone.utc).isoformat() 
         }
         supabase.table("usuarios").insert(novo_usuario).execute()
         st.success("Solicitação enviada com sucesso!")
@@ -110,13 +108,19 @@ if st.session_state['auth'] is None:
                         if user_found['status'] == 'ativo':
                             data_str = user_found.get('data_aprovacao')
                             if data_str:
-                                # CORREÇÃO AQUI: Forçamos o fuso horário para evitar o erro de comparação
+                                # 1. Transforma a string do banco em objeto com fuso (Aware)
                                 data_ap = datetime.fromisoformat(data_str.replace('Z', '+00:00'))
-                                agora_com_fuso = datetime.now(timezone.utc) 
-                                
-                                if agora_com_fuso > data_ap + timedelta(days=365):
-                                    st.error("Seu acesso expirou (validade de 1 ano atingida).")
+                                # 2. Pega o agora também com fuso (Aware)
+                                agora_utc = datetime.now(timezone.utc)
+    
+                        # 3. Agora a comparação é segura (Aware vs Aware)
+                                if agora_utc > data_ap + timedelta(days=365):
+                                    st.error("Seu acesso expirou.")
                                     st.stop()
+
+
+
+                            
                             
                             st.session_state['auth'] = {"role": "user", "user": u}
                             st.rerun()
@@ -162,14 +166,13 @@ if st.session_state['auth']['role'] == "admin":
                     c1.write(f"{status_icon} **{email_user}**")
                     
                     # Botão Aprovar (Apenas para pendentes)
-                    if user.get('status') == 'pendente':
-                        if c2.button("Aprovar", key=f"ap_{email_user}"):
-                            supabase.table("usuarios").update({
-                                "status": "ativo", 
-                                "data_aprovacao": datetime.now(timezone.utc).isoformat()
-                            }).eq("email", email_user).execute()
-                            st.success(f"Aprovado: {email_user}")
-                            st.rerun()
+                    if user['status'] == 'pendente' and c2.button("Aprovar", key=f"ap_{user['email']}"):
+                        supabase.table("usuarios").update({
+                            "status": "ativo", 
+                    # CORREÇÃO: Garante fuso horário na aprovação
+                            "data_aprovacao": datetime.now(timezone.utc).isoformat()
+                        }).eq("email", user['email']).execute()
+                        st.rerun()            
                     else:
                         c2.write("✅ Ativo")
 
