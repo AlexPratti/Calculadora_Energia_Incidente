@@ -155,63 +155,42 @@ if st.session_state['auth'] is None:
 
 
 
-# --- 4. INTERFACE PRINCIPAL (Proteção contra erro de login) ---
+# --- 4. INTERFACE PRINCIPAL E PAINEL ADMIN (Protegido) ---
 
-# Só exibe a barra lateral com o nome e o botão de sair SE o usuário estiver logado
+# 1. Verificamos se existe alguém logado antes de qualquer outra coisa
 if st.session_state.get('auth'):
+    
+    # Exibe informações na barra lateral apenas para logados
     st.sidebar.write(f"Conectado: **{st.session_state['auth']['user']}**")
     if st.sidebar.button("Sair"):
         st.session_state['auth'] = None
-        # Limpa os resultados ao sair para segurança
-        if 'res' in st.session_state: 
-            del st.session_state['res']
+        if 'res' in st.session_state: del st.session_state['res']
         st.rerun()
+
+    # 2. Só tenta acessar o ['role'] se o usuário estiver logado
+    if st.session_state['auth']['role'] == "admin":
+        with st.expander("⚙️ Painel de Controle de Usuários"):
+            try:
+                users_res = supabase.table("usuarios").select("*").execute()
+                if users_res.data:
+                    for user in users_res.data:
+                        c1, c2, c3 = st.columns([2, 1, 1])
+                        email_u = user.get('email', '---')
+                        c1.write(f"{'🟢' if user['status']=='ativo' else '🟡'} {email_u}")
+                        
+                        if user['status'] == 'pendente' and c2.button("Aprovar", key=f"ap_{email_u}"):
+                            supabase.table("usuarios").update({"status": "ativo", "data_aprovacao": datetime.now().isoformat()}).eq("email", email_u).execute()
+                            st.rerun()
+                        
+                        if c3.button("Excluir", key=f"ex_{email_u}"):
+                            supabase.table("usuarios").delete().eq("email", email_u).execute()
+                            st.rerun()
+            except:
+                st.error("Erro ao carregar painel.")
+
 else:
-    # Se não estiver logado, exibe apenas uma mensagem simples ou nada
-    st.sidebar.info("Aguardando login...")
-
-
-# --- 4. PAINEL DO ADMINISTRADOR (Versão de Diagnóstico) ---
-if st.session_state['auth']['role'] == "admin":
-    with st.expander("⚙️ Painel de Controle de Usuários"):
-        try:
-            # Buscando todos os usuários
-            users_res = supabase.table("usuarios").select("*").execute()
-            
-            if not users_res.data:
-                st.info("Nenhum usuário encontrado no banco de dados.")
-            else:
-                for user in users_res.data:
-                    # Criando colunas para organizar a linha do usuário
-                    c1, c2, c3 = st.columns([2, 1, 1])
-                    
-                    # Status e E-mail
-                    status_icon = '🟢' if user.get('status') == 'ativo' else '🟡'
-                    email_user = user.get('email', 'E-mail não encontrado')
-                    c1.write(f"{status_icon} **{email_user}**")
-                    
-                    # Botão Aprovar (Apenas para pendentes)
-                    if user['status'] == 'pendente' and c2.button("Aprovar", key=f"ap_{user['email']}"):
-                        supabase.table("usuarios").update({
-                            "status": "ativo", 
-                    # CORREÇÃO: Garante fuso horário na aprovação
-                            "data_aprovacao": datetime.now(timezone.utc).isoformat()
-                        }).eq("email", user['email']).execute()
-                        st.rerun()            
-                    else:
-                        c2.write("✅ Ativo")
-
-                    # Botão Excluir
-                    if c3.button("Excluir", key=f"ex_{email_user}"):
-                        supabase.table("usuarios").delete().eq("email", email_user).execute()
-                        st.warning(f"Excluído: {email_user}")
-                        st.rerun()
-                    st.divider() # Linha separadora entre usuários
-                    
-        except Exception as e:
-            st.error(f"Erro ao carregar usuários: {e}")
-            # Isso vai nos dizer exatamente qual coluna está faltando ou se há erro de permissão
-
+    # Se não houver ninguém logado, o script para aqui (o login já foi exibido acima)
+    st.stop()
 # --- 5. BASE DE DADOS E ABAS ---
 equip_data = {
     "CCM 15 kV": {"gap": 152.0, "dist": 914.4, "dims": {"914,4 x 914,4 x 914,4": [914.4, 914.4, 914.4, ""]}},
