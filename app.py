@@ -155,12 +155,21 @@ if st.session_state['auth'] is None:
 
 
 
-# --- 4. INTERFACE PRINCIPAL ---
-st.sidebar.write(f"Conectado: **{st.session_state['auth']['user']}**")
-if st.sidebar.button("Sair"):
-    st.session_state['auth'] = None
-    if 'res' in st.session_state: del st.session_state['res']
-    st.rerun()
+# --- 4. INTERFACE PRINCIPAL (Proteção contra erro de login) ---
+
+# Só exibe a barra lateral com o nome e o botão de sair SE o usuário estiver logado
+if st.session_state.get('auth'):
+    st.sidebar.write(f"Conectado: **{st.session_state['auth']['user']}**")
+    if st.sidebar.button("Sair"):
+        st.session_state['auth'] = None
+        # Limpa os resultados ao sair para segurança
+        if 'res' in st.session_state: 
+            del st.session_state['res']
+        st.rerun()
+else:
+    # Se não estiver logado, exibe apenas uma mensagem simples ou nada
+    st.sidebar.info("Aguardando login...")
+
 
 # --- 4. PAINEL DO ADMINISTRADOR (Versão de Diagnóstico) ---
 if st.session_state['auth']['role'] == "admin":
