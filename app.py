@@ -1,9 +1,9 @@
 import streamlit as st
+from supabase import create_client, Client
 import numpy as np
 import io
 import pandas as pd
 from datetime import datetime
-from supabase import create_client, Client
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
