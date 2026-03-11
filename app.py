@@ -15,18 +15,26 @@ from reportlab.pdfgen import canvas
 # 1. Configuração da página deve vir ANTES de qualquer outro comando Streamlit
 st.set_page_config(page_title="Gestão de Arco Elétrico", layout="wide")
 
-# 2. Configuração Supabase
-URL_SUPABASE = "https://lfgqxphittdatzknwkqw.supabase.co"
-KEY_SUPABASE = "sb_publishable_zLiarara0IVVcwQm6oR2IQ_Sb0YOWTe"
-
-# Inicialização direta (sem cache por enquanto para testar)
+# --- 2. CONFIGURAÇÃO SEGURA DO SUPABASE ---
 try:
-    if "supabase" not in st.session_state:
-        st.session_state.supabase = create_client(URL_SUPABASE, KEY_SUPABASE)
-    supabase = st.session_state.supabase
-except Exception as e:
-    st.error(f"Erro de conexão: {e}")
+    # O Streamlit busca os valores que você salvou no painel 'Secrets' automaticamente
+    URL_SUPABASE = st.secrets["URL_SUPABASE"]
+    KEY_SUPABASE = st.secrets["KEY_SUPABASE"]
+except Exception:
+    st.error("⚠️ Erro: As chaves de segurança (Secrets) não foram configuradas no painel do Streamlit.")
     st.stop()
+
+# Inicialização com Cache (Mais rápido e seguro)
+@st.cache_resource
+def init_connection():
+    return create_client(URL_SUPABASE, KEY_SUPABASE)
+
+try:
+    supabase = init_connection()
+except Exception as e:
+    st.error(f"Erro de conexão com o banco: {e}")
+    st.stop()
+
 
 
 # --- FUNÇÕES DE APOIO ---
