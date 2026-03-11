@@ -205,33 +205,67 @@ with tab1:
 with tab2:
     st.subheader("Análise de Arco Elétrico")
     col1, col2, col3 = st.columns(3)
-    v_oc, i_bf, t_arc = col1.number_input("Voc (kV)", 0.208, 15.0, 13.8), col2.number_input("Ibf (kA)", 0.5, 106.0, 4.85), col3.number_input("T (ms)", 10.0, 5000.0, 488.0)
+    v_oc = col1.number_input("Voc (kV)", 0.208, 15.0, 13.8)
+    i_bf = col2.number_input("Ibf (kA)", 0.5, 106.0, 4.85)
+    t_arc = col3.number_input("T (ms)", 10.0, 5000.0, 488.0)
+
     if st.button("Executar Estudo"):
+        # --- CONSTANTES DA NORMA ---
         k_v = [0.6, 2.7, 14.3]
-        k_ia = {0.6: [-0.04287, 1.035, -0.083, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092], 2.7: [0.0065, 1.001, -0.024, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729], 14.3: [0.005795, 1.015, -0.011, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729]}
-        k_en = {0.6: [0.753364, 0.566, 1.752636, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092, 0, -1.598, 0.957], 2.7: [2.40021, 0.165, 0.354202, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.569, 0.9778], 14.3: [3.825917, 0.11, -0.999749, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.568, 0.99]}
+        k_ia = {0.6: [-0.04287, 1.035, -0.083, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092], 
+                2.7: [0.0065, 1.001, -0.024, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729], 
+                14.3: [0.005795, 1.015, -0.011, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729]}
+        k_en = {0.6: [0.753364, 0.566, 1.752636, 0, 0, -4.783e-9, 1.962e-6, -0.000229, 0.003141, 1.092, 0, -1.598, 0.957], 
+                2.7: [2.40021, 0.165, 0.354202, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.569, 0.9778], 
+                14.3: [3.825917, 0.11, -0.999749, -1.557e-12, 4.556e-10, -4.186e-8, 8.346e-7, 5.482e-5, -0.003191, 0.9729, 0, -1.568, 0.99]}
+        
+        # --- CÁLCULOS ---
         ees = (alt/25.4 + larg/25.4) / 2.0
         cf = -0.0003*ees**2 + 0.03441*ees + 0.4325
         ia_sts = [calc_ia_step(i_bf, gap_f, k_ia[v]) for v in k_v]
         i_arc = interpolar(v_oc, *ia_sts)
         dla_sts = [calc_dla_step(ia, i_bf, gap_f, t_arc, k_en[v], cf) for ia, v in zip(ia_sts, k_v)]
         dla = interpolar(v_oc, *dla_sts)
+
         sens_list = []
-        for d in np.linspace(dist_f, dla, 5):
+        # Garantindo que a distância final seja pelo menos maior que a inicial
+        dist_final = dla if dla > dist_f else dist_f + 100
+        for d in np.linspace(dist_f, dist_final, 5):
             e_sts_temp = [calc_en_step(ia, i_bf, gap_f, d, t_arc, k_en[v], cf) for ia, v in zip(ia_sts, k_v)]
             e_v = interpolar(v_oc, *e_sts_temp) / 4.184
             sens_list.append([f"{d:.1f}", f"{e_v:.4f}", definir_vestimenta(e_v)])
+        
+        # CORREÇÃO: Pegando o primeiro valor da lista para o cálculo principal
         e_trab_cal = float(sens_list[0][1])
         v_norma = definir_vestimenta(e_trab_cal)
         v_seguranca = "CAT 2" if (1.2 < e_trab_cal <= 4) else v_norma
-        st.session_state['res'] = {"I": i_arc, "D": dla, "E_cal": e_trab_cal, "E_joule": e_trab_cal*4.184, "V_norma": v_norma, "V_seguranca": v_seguranca, "Sens": sens_list, "Equip": equip_sel, "Gap": gap_f, "Dist": dist_f}
+        
+        # --- PERSISTÊNCIA ---
+        st.session_state['res'] = {
+            "I": i_arc, "D": dla, "E_cal": e_trab_cal, 
+            "E_joule": e_trab_cal*4.184, "V_norma": v_norma, 
+            "V_seguranca": v_seguranca, "Sens": sens_list, 
+            "Equip": equip_sel, "Gap": gap_f, "Dist": dist_f
+        }
         st.rerun()
 
+    # --- EXIBIÇÃO DOS RESULTADOS (SÓ APARECE SE HOUVER CÁLCULO) ---
     if 'res' in st.session_state:
         r = st.session_state['res']
-        st.metric("Iarc", f"{r['I']:.3f} kA"), st.metric("DLA", f"{r['D']:.1f} mm")
-        st.write(f"**Energia Incidente:** {r['E_cal']:.4f} cal/cm²")
+        st.divider()
+        st.subheader("Resultados do Estudo")
+        
+        # Correção do layout das métricas
+        m1, m2 = st.columns(2)
+        m1.metric("Corrente de Arco (Iarc)", f"{r['I']:.3f} kA")
+        m2.metric("Fronteira de Arco (DLA)", f"{r['D']:.1f} mm")
+        
+        st.write("")
+        st.markdown(f"### **Energia Incidente: {r['E_cal']:.4f} cal/cm²**")
+        
+        st.write("#### Tabela de Sensibilidade")
         st.table(pd.DataFrame(r['Sens'], columns=["Distância (mm)", "Energia", "Vestimenta"]))
+
 
 with tab3:
     if 'res' in st.session_state:
