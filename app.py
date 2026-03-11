@@ -134,21 +134,47 @@ if st.sidebar.button("Sair"):
     if 'res' in st.session_state: del st.session_state['res']
     st.rerun()
 
-# Painel do Admin
+# --- 4. PAINEL DO ADMINISTRADOR (Versão de Diagnóstico) ---
 if st.session_state['auth']['role'] == "admin":
     with st.expander("⚙️ Painel de Controle de Usuários"):
         try:
+            # Buscando todos os usuários
             users_res = supabase.table("usuarios").select("*").execute()
-            for user in users_res.data:
-                c1, c2, c3 = st.columns([2, 1, 1])
-                c1.write(f"{'🟢' if user['status']=='ativo' else '🟡'} {user['email']}")
-                if user['status'] == 'pendente' and c2.button("Aprovar", key=f"ap_{user['email']}"):
-                    supabase.table("usuarios").update({"status": "ativo", "data_aprovacao": datetime.now(timezone.utc).isoformat()}).eq("email", user['email']).execute()
-                    st.rerun()
-                if c3.button("Excluir", key=f"ex_{user['email']}"):
-                    supabase.table("usuarios").delete().eq("email", user['email']).execute()
-                    st.rerun()
-        except: pass
+            
+            if not users_res.data:
+                st.info("Nenhum usuário encontrado no banco de dados.")
+            else:
+                for user in users_res.data:
+                    # Criando colunas para organizar a linha do usuário
+                    c1, c2, c3 = st.columns([2, 1, 1])
+                    
+                    # Status e E-mail
+                    status_icon = '🟢' if user.get('status') == 'ativo' else '🟡'
+                    email_user = user.get('email', 'E-mail não encontrado')
+                    c1.write(f"{status_icon} **{email_user}**")
+                    
+                    # Botão Aprovar (Apenas para pendentes)
+                    if user.get('status') == 'pendente':
+                        if c2.button("Aprovar", key=f"ap_{email_user}"):
+                            supabase.table("usuarios").update({
+                                "status": "ativo", 
+                                "data_aprovacao": datetime.now(timezone.utc).isoformat()
+                            }).eq("email", email_user).execute()
+                            st.success(f"Aprovado: {email_user}")
+                            st.rerun()
+                    else:
+                        c2.write("✅ Ativo")
+
+                    # Botão Excluir
+                    if c3.button("Excluir", key=f"ex_{email_user}"):
+                        supabase.table("usuarios").delete().eq("email", email_user).execute()
+                        st.warning(f"Excluído: {email_user}")
+                        st.rerun()
+                    st.divider() # Linha separadora entre usuários
+                    
+        except Exception as e:
+            st.error(f"Erro ao carregar usuários: {e}")
+            # Isso vai nos dizer exatamente qual coluna está faltando ou se há erro de permissão
 
 # --- 5. BASE DE DADOS E ABAS ---
 equip_data = {
