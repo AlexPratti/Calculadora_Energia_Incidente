@@ -29,7 +29,8 @@ from supabase import create_client, Client
 URL_SUPABASE = "https://lfgqxphittdatzknwkqw.supabase.co" 
 KEY_SUPABASE = "sb_publishable_zLiarara0IVVcwQm6oR2IQ_Sb0YOWTe" 
 
-supabase = create_client(url, key)
+supabase = create_client(URL_SUPABASE, KEY_SUPABASE)
+
 
 # Função para enviar solicitação
 def enviar_solicitacao(email, senha):
