@@ -1,5 +1,5 @@
-from supabase import create_client, Client
 import streamlit as st
+from supabase import create_client, Client
 import numpy as np
 import io
 import pandas as pd
@@ -27,10 +27,19 @@ st.set_page_config(page_title="NBR 17227 - Relatório Técnico", layout="wide")
 URL_SUPABASE = "https://lfgqxphittdatzknwkqw.supabase.co"
 KEY_SUPABASE = "sb_publishable_zLiarara0IVVcwQm6oR2IQ_Sb0YOWTe"
 
+# Inicializa Supabase apenas uma vez
 if "supabase" not in st.session_state:
     st.session_state.supabase = create_client(URL_SUPABASE, KEY_SUPABASE)
 
-supabase = st.session_state.supabase
+supabase = st.session_state.supabase  # Certifique-se de acessar a variável global
+
+# Teste de conexão
+try:
+    res = supabase.table("usuarios").select("*").execute()
+    st.success("Conexão com o Supabase bem-sucedida!")
+except Exception as e:
+    st.error(f"Erro ao conectar ao Supabase: {e}")
+
 
 # Função para enviar solicitação
 def enviar_solicitacao(email, senha):
