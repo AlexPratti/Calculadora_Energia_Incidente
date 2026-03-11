@@ -266,6 +266,18 @@ with tab2:
         st.write("#### Tabela de Sensibilidade")
         st.table(pd.DataFrame(r['Sens'], columns=["Distância (mm)", "Energia", "Vestimenta"]))
 
+        # --- EXIBIÇÃO DAS CAIXAS COLORIDAS (IGUAL À SUA FOTO) ---
+        st.markdown(f"""
+            <div style="background-color: #15324d; padding: 20px; border-radius: 10px; border-left: 8px solid #2196f3; margin-bottom: 15px;">
+                <p style="color: white; margin: 0; font-size: 18px; font-weight: 500;">Vestimenta (Conforme Cálculo):</p>
+                <p style="color: #2196f3; margin: 0; font-size: 38px; font-weight: 900;">{r['V_norma']}</p>
+            </div>
+        
+            <div style="background-color: #1b3d2f; padding: 20px; border-radius: 10px; border-left: 8px solid #4caf50;">
+                <p style="color: white; margin: 0; font-size: 18px; font-weight: 500;">Vestimenta (Princípio de Segurança Normativo):</p>
+                <p style="color: #4caf50; margin: 0; font-size: 38px; font-weight: 900;">{r['V_seguranca']}</p>
+            </div>
+        """, unsafe_allow_html=True)
 
 with tab3:
     if 'res' in st.session_state:
