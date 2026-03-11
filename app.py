@@ -14,7 +14,7 @@ from reportlab.pdfgen import canvas
 
 # --- CONFIGURAÇÃO DA PÁGINA (Deve ser o primeiro comando) ---
 if 'setup_done' not in st.session_state:
-    st.set_page_config(page_title="Gestão de Arco Elétrico", layout="wide")
+    #st.set_page_config(page_title="Gestão de Arco Elétrico", layout="wide")
     st.session_state['setup_done'] = True
 
 # --- CONFIGURAÇÃO SUPABASE ---
